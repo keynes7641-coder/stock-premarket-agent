@@ -28,6 +28,17 @@ except ImportError:
 
 FLASH_MODEL = os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.8-flash")
 PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", FLASH_MODEL)
+FALLBACK_MODELS = list(
+    dict.fromkeys(
+        [
+            FLASH_MODEL,
+            "gemini-3.7-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+        ]
+    )
+)
+_grounding_enabled = True
 
 
 def init_services() -> tuple[Any, genai.Client]:
@@ -51,7 +62,7 @@ def init_services() -> tuple[Any, genai.Client]:
     db = firestore.client()
     client = genai.Client(
         api_key=gemini_key,
-        http_options=types.HttpOptions(timeout=30000),
+        http_options=types.HttpOptions(timeout=45000),
     )
     return db, client
 
@@ -90,7 +101,7 @@ def _generate_with_retry(
             err_msg = str(exc)
             is_transient = "503" in err_msg or "UNAVAILABLE" in err_msg or "500" in err_msg
             if is_transient and attempt < retries - 1:
-                wait_sec = 3
+                wait_sec = 2
                 print(f"[提示] {model} 暫時繁忙 (503/500)，{wait_sec} 秒後重試 ({attempt + 1}/{retries})...")
                 time.sleep(wait_sec)
                 continue
@@ -130,17 +141,22 @@ def get_macro_summary(client: genai.Client, market: str) -> str:
 
     要求：點出半導體/科技股氣氛、美債殖利率或 VIX 是否帶來估值壓力，以及今日操作該偏積極或保守控管倉位。
     """
-    try:
-        res = _generate_with_retry(
-            client,
-            model=FLASH_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.2),
-        )
-        summary_text = (res.text or "").strip() or "暫無總經判讀摘要。"
-    except Exception as exc:
-        print(f"[警告] 生成總經風向摘要失敗: {exc}")
-        summary_text = "總經 AI 摘要生成暫時異常，請參考上方指數數據。"
+    summary_text = "總經 AI 摘要生成暫時異常，請參考上方指數數據。"
+    for model_name in FALLBACK_MODELS:
+        try:
+            res = _generate_with_retry(
+                client,
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.2),
+            )
+            text = (res.text or "").strip()
+            if text:
+                print(f"[成功] 總經風向摘要已由 {model_name} 生成")
+                summary_text = text
+                break
+        except Exception as exc:
+            print(f"[警告] 總經風向摘要使用 {model_name} 失敗: {exc}")
 
     return f"{raw_macro}\n\n**💡 總經風向判讀**：\n{summary_text}"
 
@@ -324,15 +340,14 @@ def analyze_stock(
     }}
     """
 
-    # 嘗試順序：1) FLASH + Google Search Grounding -> 2) FLASH 純數據/RSS JSON 模式（零 Grounding 配額消耗）
-    # 若使用者有自訂或開通付費 PRO_MODEL，也會先嘗試 PRO_MODEL + Grounding
+    global _grounding_enabled
+
+    # 嘗試順序：若尚有 Grounding 配額先嘗試 Grounding，否則依序走已驗證可用的 Gemini 3.x Flash 備援鏈
     attempts: list[tuple[str, bool]] = []
-    if PRO_MODEL != FLASH_MODEL:
+    if _grounding_enabled:
         attempts.append((PRO_MODEL, True))
-    attempts.append((FLASH_MODEL, True))
-    attempts.append((FLASH_MODEL, False))
-    if FLASH_MODEL != "gemini-flash-latest":
-        attempts.append(("gemini-flash-latest", False))
+    for m in FALLBACK_MODELS:
+        attempts.append((m, False))
 
     last_err: Exception | None = None
     for model_name, use_search in attempts:
@@ -354,7 +369,10 @@ def analyze_stock(
                 )
             except Exception as first_err:
                 err_msg = str(first_err)
-                if any(k in err_msg for k in ("404", "429", "NOT_FOUND", "RESOURCE_EXHAUSTED")):
+                if any(
+                    k in err_msg
+                    for k in ("404", "429", "503", "504", "NOT_FOUND", "RESOURCE_EXHAUSTED", "DEADLINE_EXCEEDED")
+                ):
                     raise
                 if use_search:
                     print(f"[提示] {stock['ticker']} ({model_name}) 切換純文字 JSON 提示重試")
@@ -385,6 +403,10 @@ def analyze_stock(
             }
         except Exception as exc:
             last_err = exc
+            err_msg = str(exc)
+            if use_search and ("429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg):
+                _grounding_enabled = False
+                print("[提示] 本次執行偵測到 Grounding 配額不足，後續標的改直接採用 RSS/純數據模式")
             print(f"[警告] {stock['name']} ({stock['ticker']}) 使用 {model_name} ({mode_label}) 失敗: {exc}")
 
     print(f"[錯誤] 分析 {stock['name']} ({stock['ticker']}) 所有模式皆失敗: {last_err}")
