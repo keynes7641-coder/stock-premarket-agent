@@ -26,19 +26,19 @@ try:
 except ImportError:
     pass
 
-FLASH_MODEL = os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.8-flash")
+FLASH_MODEL = os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.5-flash")
 PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", FLASH_MODEL)
 FALLBACK_MODELS = list(
     dict.fromkeys(
         [
             FLASH_MODEL,
-            "gemini-3.7-flash",
-            "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
+            "gemini-3.8-flash",
         ]
     )
 )
 _grounding_enabled = True
+_exhausted_models: set[str] = set()
 
 
 def init_services() -> tuple[Any, genai.Client]:
@@ -347,7 +347,8 @@ def analyze_stock(
     if _grounding_enabled:
         attempts.append((PRO_MODEL, True))
     for m in FALLBACK_MODELS:
-        attempts.append((m, False))
+        if m not in _exhausted_models:
+            attempts.append((m, False))
 
     last_err: Exception | None = None
     for model_name, use_search in attempts:
@@ -404,9 +405,13 @@ def analyze_stock(
         except Exception as exc:
             last_err = exc
             err_msg = str(exc)
-            if use_search and ("429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg):
-                _grounding_enabled = False
-                print("[提示] 本次執行偵測到 Grounding 配額不足，後續標的改直接採用 RSS/純數據模式")
+            if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                if use_search:
+                    _grounding_enabled = False
+                    print("[提示] 本次執行偵測到 Grounding 配額不足，後續標的改直接採用 RSS/純數據模式")
+                else:
+                    _exhausted_models.add(model_name)
+                    print(f"[提示] 模型 {model_name} 配額暫滿，本次後續標的自動略過")
             print(f"[警告] {stock['name']} ({stock['ticker']}) 使用 {model_name} ({mode_label}) 失敗: {exc}")
 
     print(f"[錯誤] 分析 {stock['name']} ({stock['ticker']}) 所有模式皆失敗: {last_err}")
