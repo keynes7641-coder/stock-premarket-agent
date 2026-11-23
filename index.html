@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI 盤前投資情報站</title>
+  <title>AI 盤前與即時投資情報站</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
 
@@ -20,15 +21,16 @@
   </div>
 
   <!-- 主系統介面 -->
-  <div id="app-section" class="hidden max-w-5xl mx-auto px-4 py-8">
-    <header class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 border-b border-slate-700 pb-4">
+  <div id="app-section" class="hidden max-w-6xl mx-auto px-4 py-8">
+    <header class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8 border-b border-slate-700 pb-4">
       <div>
-        <h1 class="text-2xl font-bold text-sky-400">📊 AI 盤前持股情報與管理</h1>
-        <p class="text-slate-400 text-sm mt-1">自動彙整隔夜總經、財報與籌碼動態</p>
+        <h1 class="text-2xl font-bold text-sky-400">📊 AI 盤前持股情報與即時看盤</h1>
+        <p class="text-slate-400 text-sm mt-1">自動彙整隔夜總經、即時走勢、技術指標與法人籌碼動態</p>
       </div>
-      <div class="flex gap-3">
-        <button type="button" id="tab-reports" class="px-4 py-2 rounded-lg bg-sky-600 font-medium transition">盤前報告</button>
-        <button type="button" id="tab-portfolio" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition">持股清單管理</button>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="tab-reports" class="px-4 py-2 rounded-lg bg-sky-600 font-medium transition text-sm">盤前報告</button>
+        <button type="button" id="tab-live" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">⚡ 即時走勢</button>
+        <button type="button" id="tab-portfolio" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">持股清單管理</button>
         <button type="button" id="btn-logout" class="px-3 py-2 rounded-lg text-slate-400 hover:text-white text-sm transition">登出</button>
       </div>
     </header>
@@ -54,7 +56,307 @@
       <div id="stocks-report-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
     </div>
 
-    <!-- 分頁 2：持股清單管理 -->
+    <!-- 分頁 2：即時走勢與籌碼技術分析 -->
+    <div id="view-live" class="hidden space-y-6">
+      <!-- 頂部大盤即時脈動 + 更新控制列 -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <h2 class="text-sm font-bold text-slate-200 tracking-wide">大盤即時脈動</h2>
+            <span id="live-updated-at" class="text-xs text-slate-400 ml-2">尚未更新</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <label class="inline-flex items-center gap-2 text-slate-300 cursor-pointer select-none">
+              <input id="live-auto-refresh" type="checkbox" checked class="accent-sky-500 rounded" />
+              每 30 秒自動更新
+            </label>
+            <button type="button" id="btn-refresh-live" class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium transition">立即更新</button>
+          </div>
+        </div>
+        <div id="market-pulse-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3 text-xs text-slate-400">載入大盤報價中...</div>
+        </div>
+      </div>
+
+      <!-- 持股即時快覽 + 任意代號查詢 -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <h2 class="text-base font-bold text-sky-400">📌 持股即時報價快覽（點擊切換詳細走勢）</h2>
+          <form id="live-search-form" class="flex items-center gap-2">
+            <select id="live-search-market" class="bg-slate-700 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-sky-500">
+              <option value="TW">台股</option>
+              <option value="US">美股</option>
+            </select>
+            <input id="live-search-ticker" type="text" placeholder="查詢任意代號 (如 2317 / NVDA)" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-xs w-48 focus:outline-none focus:border-sky-500" />
+            <button type="submit" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-xs font-medium transition">查詢</button>
+          </form>
+        </div>
+        <div id="live-watchlist-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div class="text-sm text-slate-400">載入持股即時報價中...</div>
+        </div>
+      </div>
+
+      <!-- 單一標的詳細看盤區 -->
+      <div id="live-detail-loading" class="hidden bg-slate-800 border border-slate-700 rounded-xl p-8 text-center text-slate-400 text-sm">
+        正在抓取即時行情、K 線、技術指標與三大法人籌碼...
+      </div>
+
+      <div id="live-detail-panel" class="hidden space-y-6">
+        <!-- 1. 核心盤口與走勢圖 -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+          <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 pb-4 border-b border-slate-700">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 id="ld-title" class="text-2xl font-bold text-white">--</h3>
+                <span id="ld-market-badge" class="px-2 py-0.5 rounded text-xs font-bold bg-indigo-500/30 text-indigo-300">TW</span>
+                <span id="ld-trading-badge" class="px-2 py-0.5 rounded text-xs font-semibold bg-slate-700 text-slate-300">--</span>
+              </div>
+              <div class="flex flex-wrap items-baseline gap-3 mt-2">
+                <span id="ld-price" class="text-4xl font-extrabold tracking-tight">--</span>
+                <span id="ld-change" class="text-lg font-bold">--</span>
+                <span id="ld-pnl-badge" class="hidden px-2.5 py-0.5 rounded-full text-xs font-bold border">--</span>
+              </div>
+            </div>
+
+            <!-- 圖表切換按鈕 -->
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="btn-chart-intraday" class="px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold transition">當日 5 分 K + 均價線</button>
+              <button type="button" id="btn-chart-daily" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition">近 60 日 K + 均線</button>
+            </div>
+          </div>
+
+          <!-- 盤口關鍵數據格 -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 my-4 text-xs">
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">昨收</div>
+              <div id="ld-prev" class="text-sm font-bold text-slate-100 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">當日最高</div>
+              <div id="ld-high" class="text-sm font-bold text-rose-400 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">當日最低</div>
+              <div id="ld-low" class="text-sm font-bold text-emerald-400 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">當日均價 (VWAP)</div>
+              <div id="ld-vwap" class="text-sm font-bold text-amber-300 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">成交量</div>
+              <div id="ld-vol" class="text-sm font-bold text-sky-300 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">量比 (對5日均量)</div>
+              <div id="ld-vol-ratio" class="text-sm font-bold text-slate-100 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">當日振幅</div>
+              <div id="ld-amp" class="text-sm font-bold text-slate-100 mt-0.5">--</div>
+            </div>
+            <div class="bg-slate-900/60 p-2.5 rounded-lg">
+              <div class="text-slate-400">漲停 / 跌停</div>
+              <div id="ld-limits" class="text-sm font-bold text-slate-200 mt-0.5">--</div>
+            </div>
+          </div>
+
+          <!-- 當日高低區間位置條 -->
+          <div class="mb-4">
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span>當日價格區間位置</span>
+              <span id="ld-range-label">--</span>
+            </div>
+            <div class="w-full h-2 bg-slate-700 rounded-full overflow-hidden relative">
+              <div id="ld-range-bar" class="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-400 rounded-full transition-all" style="width: 50%"></div>
+            </div>
+          </div>
+
+          <!-- 價格走勢圖與成交量圖 -->
+          <div class="h-72 w-full">
+            <canvas id="live-price-chart"></canvas>
+          </div>
+          <div class="h-24 w-full mt-2">
+            <canvas id="live-volume-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- 2. 即時技術分析面板 -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 pb-3 border-b border-slate-700">
+            <div>
+              <h3 class="text-lg font-bold text-amber-400">📐 即時技術分析儀表板</h3>
+              <p id="ta-summary" class="text-xs text-slate-400 mt-0.5">結合即時報價與近 240 日 K 線運算</p>
+            </div>
+            <span id="ta-overall-badge" class="self-start sm:self-center px-3 py-1 rounded-lg text-xs font-bold border">--</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+            <!-- 均線系統 -->
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-xl p-4 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="font-bold text-sky-400">均線排列</span>
+                <span id="ta-ma-signal" class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-700">--</span>
+              </div>
+              <div class="grid grid-cols-2 gap-y-1.5 text-xs pt-1">
+                <span class="text-slate-400">MA5 (週線)</span><span id="ta-ma5" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">MA10 (雙週)</span><span id="ta-ma10" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">MA20 (月線)</span><span id="ta-ma20" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">MA60 (季線)</span><span id="ta-ma60" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">月線乖離率</span><span id="ta-bias20" class="text-right font-semibold">--</span>
+              </div>
+            </div>
+
+            <!-- RSI & KD 動能 -->
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-xl p-4 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="font-bold text-purple-400">動能 RSI & KD</span>
+                <span id="ta-osc-signal" class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-700">--</span>
+              </div>
+              <div class="grid grid-cols-2 gap-y-1.5 text-xs pt-1">
+                <span class="text-slate-400">RSI (14)</span><span id="ta-rsi14" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">K 值 (9)</span><span id="ta-k9" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">D 值 (9)</span><span id="ta-d9" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">KD 狀態</span><span id="ta-kd-cross" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">VWAP 相對位置</span><span id="ta-vwap-pos" class="text-right font-semibold">--</span>
+              </div>
+            </div>
+
+            <!-- MACD & 布林通道 -->
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-xl p-4 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="font-bold text-emerald-400">MACD & 布林通道</span>
+                <span id="ta-macd-signal" class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-700">--</span>
+              </div>
+              <div class="grid grid-cols-2 gap-y-1.5 text-xs pt-1">
+                <span class="text-slate-400">DIF / MACD</span><span id="ta-macd-vals" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">OSC 柱狀體</span><span id="ta-macd-osc" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">布林上軌</span><span id="ta-bb-up" class="text-right font-semibold text-rose-300">--</span>
+                <span class="text-slate-400">布林下軌</span><span id="ta-bb-low" class="text-right font-semibold text-emerald-300">--</span>
+                <span class="text-slate-400">布林 %B</span><span id="ta-bb-pct" class="text-right font-semibold">--</span>
+              </div>
+            </div>
+
+            <!-- 短線關鍵支撐壓力 -->
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-xl p-4 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="font-bold text-rose-400">短線支撐 / 壓力</span>
+                <span class="text-xs text-slate-400">20日區間</span>
+              </div>
+              <div class="grid grid-cols-2 gap-y-1.5 text-xs pt-1">
+                <span class="text-slate-400">短線壓力 (20H)</span><span id="ta-res20" class="text-right font-semibold text-rose-400">--</span>
+                <span class="text-slate-400">短線支撐 (20L)</span><span id="ta-sup20" class="text-right font-semibold text-emerald-400">--</span>
+                <span class="text-slate-400">月線防守位</span><span id="ta-def-ma20" class="text-right font-semibold text-amber-300">--</span>
+                <span class="text-slate-400">當日多空線</span><span id="ta-def-vwap" class="text-right font-semibold text-sky-300">--</span>
+                <span class="text-slate-400">距20日高點</span><span id="ta-from-high" class="text-right font-semibold">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 三大法人進出 + 融資融券／估值／月營收／AI策略連動 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- 左側 2 欄：三大法人進出與 5 日趨勢圖 -->
+          <div class="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-xl p-5">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-700">
+              <div>
+                <h3 class="text-lg font-bold text-sky-400">🏦 三大法人進出明細</h3>
+                <p id="inst-date-note" class="text-xs text-slate-400 mt-0.5">資料來源：FinMind（盤中顯示最新公告交易日）</p>
+              </div>
+              <span id="inst-streak-badge" class="text-xs px-2.5 py-1 rounded bg-slate-700 text-slate-300">--</span>
+            </div>
+
+            <div id="inst-us-notice" class="hidden py-10 text-center text-sm text-slate-400">
+              美股無台股三大法人每日買賣超制度，請參考上方即時量比、技術分析與右側 AI 策略建議。
+            </div>
+
+            <div id="inst-tw-body">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-center">
+                <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3">
+                  <div class="text-xs text-slate-400">外資</div>
+                  <div id="inst-foreign" class="text-lg font-bold mt-1">--</div>
+                  <div id="inst-foreign-5d" class="text-[11px] text-slate-400 mt-0.5">5日: --</div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3">
+                  <div class="text-xs text-slate-400">投信</div>
+                  <div id="inst-trust" class="text-lg font-bold mt-1">--</div>
+                  <div id="inst-trust-5d" class="text-[11px] text-slate-400 mt-0.5">5日: --</div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3">
+                  <div class="text-xs text-slate-400">自營商</div>
+                  <div id="inst-dealer" class="text-lg font-bold mt-1">--</div>
+                  <div id="inst-dealer-5d" class="text-[11px] text-slate-400 mt-0.5">5日: --</div>
+                </div>
+                <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3">
+                  <div class="text-xs text-slate-400">三大法人合計</div>
+                  <div id="inst-total" class="text-lg font-bold mt-1">--</div>
+                  <div id="inst-total-5d" class="text-[11px] text-slate-400 mt-0.5">5日: --</div>
+                </div>
+              </div>
+              <div class="h-56 w-full">
+                <canvas id="inst-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右側 1 欄：進階實用即時資訊（融資融券、估值、營收、AI 盤前策略） -->
+          <div class="space-y-4">
+            <!-- 融資融券籌碼 -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+              <div class="flex justify-between items-center mb-2">
+                <h4 class="text-sm font-bold text-emerald-400">⚖️ 融資融券與券資比</h4>
+                <span id="margin-date" class="text-[11px] text-slate-400">--</span>
+              </div>
+              <div id="margin-body" class="grid grid-cols-2 gap-y-2 text-xs">
+                <span class="text-slate-400">融資餘額 (增減)</span><span id="mg-buy" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">融券餘額 (增減)</span><span id="mg-short" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">券資比</span><span id="mg-ratio" class="text-right font-semibold text-amber-300">--</span>
+                <span class="text-slate-400">籌碼解讀</span><span id="mg-note" class="text-right font-semibold">--</span>
+              </div>
+            </div>
+
+            <!-- 估值與最新月營收 -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+              <div class="flex justify-between items-center mb-2">
+                <h4 class="text-sm font-bold text-amber-400">💎 估值位階與最新月營收</h4>
+                <span id="val-date" class="text-[11px] text-slate-400">--</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-center mb-3">
+                <div class="bg-slate-900/60 rounded-lg p-2">
+                  <div class="text-[11px] text-slate-400">本益比 PER</div>
+                  <div id="val-per" class="text-sm font-bold text-white mt-0.5">--</div>
+                </div>
+                <div class="bg-slate-900/60 rounded-lg p-2">
+                  <div class="text-[11px] text-slate-400">股價淨值比</div>
+                  <div id="val-pbr" class="text-sm font-bold text-white mt-0.5">--</div>
+                </div>
+                <div class="bg-slate-900/60 rounded-lg p-2">
+                  <div class="text-[11px] text-slate-400">殖利率</div>
+                  <div id="val-yield" class="text-sm font-bold text-emerald-300 mt-0.5">--</div>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-y-1.5 text-xs border-t border-slate-700 pt-2.5">
+                <span class="text-slate-400">最新月營收</span><span id="rev-val" class="text-right font-semibold">--</span>
+                <span class="text-slate-400">月增 / 年增</span><span id="rev-growth" class="text-right font-semibold">--</span>
+              </div>
+            </div>
+
+            <!-- 最新 AI 盤前策略連動 -->
+            <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+              <div class="flex justify-between items-center mb-2">
+                <h4 class="text-sm font-bold text-sky-400">🤖 最新 AI 盤前策略連動</h4>
+                <span id="ai-link-sentiment" class="text-[11px] px-2 py-0.5 rounded bg-slate-700 text-slate-300">--</span>
+              </div>
+              <p id="ai-link-events" class="text-xs text-slate-300 leading-relaxed mb-2">尚未有此檔標的之最新 AI 盤前分析報告。</p>
+              <p id="ai-link-advice" class="text-xs text-amber-200/90 leading-relaxed border-t border-slate-700 pt-2"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 分頁 3：持股清單管理 -->
     <div id="view-portfolio" class="hidden">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6">
         <h2 class="text-lg font-bold text-emerald-400 mb-4">➕ 新增 / 更新持股</h2>
@@ -113,6 +415,16 @@
 
     let cachedReports = {};
     let cachedPortfolio = {};
+    let currentTab = "reports";
+
+    // 即時走勢狀態
+    let activeLiveTarget = null; // { market, ticker, name, avg_cost }
+    let liveChartMode = "intraday"; // "intraday" | "daily"
+    let liveDetailCache = null; // { intraday, daily, quote, target }
+    let priceChartInstance = null;
+    let volumeChartInstance = null;
+    let instChartInstance = null;
+    let liveRefreshTimer = null;
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -123,13 +435,55 @@
         .replace(/'/g, "&#39;");
     }
 
-    onAuthStateChanged(auth, (user) => {
+    function fmtNum(val, decimals = 2) {
+      if (val === null || val === undefined || Number.isNaN(Number(val))) return "--";
+      return Number(val).toLocaleString("en-US", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      });
+    }
+
+    function fmtSigned(val, decimals = 2, suffix = "") {
+      if (val === null || val === undefined || Number.isNaN(Number(val))) return "--";
+      const n = Number(val);
+      const sign = n > 0 ? "+" : "";
+      return `${sign}${fmtNum(n, decimals)}${suffix}`;
+    }
+
+    function fmtLots(val) {
+      if (val === null || val === undefined || Number.isNaN(Number(val))) return "--";
+      const n = Math.round(Number(val));
+      const sign = n > 0 ? "+" : "";
+      return `${sign}${n.toLocaleString("en-US")} 張`;
+    }
+
+    function colorBySign(val) {
+      if (val === null || val === undefined || Number.isNaN(Number(val)) || Number(val) === 0) {
+        return "text-slate-200";
+      }
+      return Number(val) > 0 ? "text-rose-400" : "text-emerald-400";
+    }
+
+    function toCnyesSymbol(market, ticker) {
+      const clean = String(ticker || "").trim().toUpperCase().replace(/\.(TW|TWO)$/i, "");
+      return market === "TW" ? `TWS:${clean}:STOCK` : `USS:${clean}:STOCK`;
+    }
+
+    function getDateOffsetStr(daysAgo) {
+      const d = new Date(Date.now() - daysAgo * 86400000);
+      return d.toISOString().slice(0, 10);
+    }
+
+    onAuthStateChanged(auth, async (user) => {
       if (user) {
         document.getElementById("auth-section").classList.add("hidden");
         document.getElementById("app-section").classList.remove("hidden");
-        loadReports();
-        loadPortfolio();
+        await Promise.all([loadReports(), loadPortfolio()]);
+        if (currentTab === "live") {
+          refreshLiveView();
+        }
       } else {
+        stopLiveAutoRefresh();
         document.getElementById("auth-section").classList.remove("hidden");
         document.getElementById("app-section").classList.add("hidden");
       }
@@ -148,28 +502,116 @@
       }
     });
 
-    document.getElementById("btn-logout").addEventListener("click", () => signOut(auth));
+    document.getElementById("btn-logout").addEventListener("click", () => {
+      stopLiveAutoRefresh();
+      signOut(auth);
+    });
 
     function switchTab(tab) {
+      currentTab = tab;
       document.getElementById("view-reports").classList.toggle("hidden", tab !== "reports");
+      document.getElementById("view-live").classList.toggle("hidden", tab !== "live");
       document.getElementById("view-portfolio").classList.toggle("hidden", tab !== "portfolio");
-      document.getElementById("tab-reports").className =
-        tab === "reports"
-          ? "px-4 py-2 rounded-lg bg-sky-600 font-medium transition"
-          : "px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition";
-      document.getElementById("tab-portfolio").className =
-        tab === "portfolio"
-          ? "px-4 py-2 rounded-lg bg-sky-600 font-medium transition"
-          : "px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition";
+
+      const activeClass = "px-4 py-2 rounded-lg bg-sky-600 font-medium transition text-sm";
+      const idleClass = "px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm";
+      document.getElementById("tab-reports").className = tab === "reports" ? activeClass : idleClass;
+      document.getElementById("tab-live").className = tab === "live" ? activeClass : idleClass;
+      document.getElementById("tab-portfolio").className = tab === "portfolio" ? activeClass : idleClass;
+
+      if (tab === "live") {
+        refreshLiveView();
+        startLiveAutoRefresh();
+      } else {
+        stopLiveAutoRefresh();
+      }
     }
 
     document.getElementById("tab-reports").addEventListener("click", () => switchTab("reports"));
+    document.getElementById("tab-live").addEventListener("click", () => switchTab("live"));
     document.getElementById("tab-portfolio").addEventListener("click", () => switchTab("portfolio"));
     document.getElementById("report-select").addEventListener("change", renderSelectedReport);
     document.getElementById("btn-refresh-reports").addEventListener("click", loadReports);
     document.getElementById("btn-save-stock").addEventListener("click", saveStock);
     document.getElementById("btn-reset-form").addEventListener("click", resetPortfolioForm);
 
+    document.getElementById("btn-refresh-live").addEventListener("click", () => refreshLiveView(true));
+    document.getElementById("live-auto-refresh").addEventListener("change", (e) => {
+      if (e.target.checked && currentTab === "live") {
+        startLiveAutoRefresh();
+      } else {
+        stopLiveAutoRefresh();
+      }
+    });
+
+    document.getElementById("btn-chart-intraday").addEventListener("click", () => {
+      liveChartMode = "intraday";
+      updateChartModeButtons();
+      renderMainChart();
+    });
+
+    document.getElementById("btn-chart-daily").addEventListener("click", () => {
+      liveChartMode = "daily";
+      updateChartModeButtons();
+      renderMainChart();
+    });
+
+    document.getElementById("live-search-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const market = document.getElementById("live-search-market").value;
+      const ticker = document.getElementById("live-search-ticker").value.trim().toUpperCase();
+      if (!ticker) return;
+      const existing = cachedPortfolio[`${market}_${ticker}`];
+      activeLiveTarget = existing
+        ? { ...existing }
+        : { market, ticker, name: ticker, avg_cost: null };
+      loadLiveStockDetail(activeLiveTarget);
+    });
+
+    document.getElementById("live-watchlist-grid").addEventListener("click", (event) => {
+      const card = event.target.closest("[data-live-doc-id]");
+      if (!card) return;
+      const item = cachedPortfolio[card.dataset.liveDocId];
+      if (!item) return;
+      activeLiveTarget = { ...item };
+      highlightWatchlistSelection();
+      loadLiveStockDetail(activeLiveTarget);
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        stopLiveAutoRefresh();
+      } else if (currentTab === "live" && document.getElementById("live-auto-refresh").checked) {
+        refreshLiveView();
+        startLiveAutoRefresh();
+      }
+    });
+
+    function startLiveAutoRefresh() {
+      stopLiveAutoRefresh();
+      if (!document.getElementById("live-auto-refresh").checked) return;
+      liveRefreshTimer = setInterval(() => {
+        if (currentTab === "live" && !document.hidden) {
+          refreshLiveView(false);
+        }
+      }, 30000);
+    }
+
+    function stopLiveAutoRefresh() {
+      if (liveRefreshTimer) {
+        clearInterval(liveRefreshTimer);
+        liveRefreshTimer = null;
+      }
+    }
+
+    function updateChartModeButtons() {
+      const active = "px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold transition";
+      const idle = "px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition";
+      document.getElementById("btn-chart-intraday").className = liveChartMode === "intraday" ? active : idle;
+      document.getElementById("btn-chart-daily").className = liveChartMode === "daily" ? active : idle;
+    }
+
+    // ==================== 分頁 1：盤前報告 ====================
     async function loadReports() {
       const select = document.getElementById("report-select");
       const emptyEl = document.getElementById("reports-empty");
@@ -261,6 +703,884 @@
       });
     }
 
+    // ==================== 分頁 2：即時走勢與技術籌碼 ====================
+    async function refreshLiveView(showLoader = false) {
+      await Promise.all([loadMarketPulse(), loadWatchlistQuotes()]);
+      const nowStr = new Date().toLocaleTimeString("zh-TW", { hour12: false });
+      document.getElementById("live-updated-at").innerText = `更新於 ${nowStr}`;
+
+      if (!activeLiveTarget) {
+        const keys = Object.keys(cachedPortfolio).sort();
+        if (keys.length > 0) {
+          activeLiveTarget = { ...cachedPortfolio[keys[0]] };
+        } else {
+          activeLiveTarget = { market: "TW", ticker: "2330", name: "台積電", avg_cost: null };
+        }
+      }
+      highlightWatchlistSelection();
+      await loadLiveStockDetail(activeLiveTarget, showLoader);
+    }
+
+    async function loadMarketPulse() {
+      const grid = document.getElementById("market-pulse-grid");
+      const symbols = [
+        { sym: "TWS:TSE01:INDEX", label: "加權指數" },
+        { sym: "TWS:OTC01:INDEX", label: "櫃買指數" },
+        { sym: "GI:SOX:INDEX", label: "費城半導體" },
+        { sym: "USS:TSM:STOCK", label: "台積電 ADR" },
+      ];
+      try {
+        const joined = symbols.map((s) => s.sym).join(",");
+        const resp = await fetch(`https://ws.api.cnyes.com/ws/api/v1/quote/quotes/${joined}?column=A`);
+        const json = await resp.json();
+        const bySym = {};
+        (json.data || []).forEach((item) => {
+          bySym[item["0"]] = item;
+        });
+
+        grid.innerHTML = "";
+        symbols.forEach(({ sym, label }) => {
+          const q = bySym[sym];
+          const price = q ? q["6"] : null;
+          const chg = q ? q["11"] : null;
+          const pct = q ? q["56"] : null;
+          const color = colorBySign(pct);
+          grid.insertAdjacentHTML(
+            "beforeend",
+            `
+            <div class="bg-slate-900/70 border border-slate-700/80 rounded-lg p-3">
+              <div class="text-xs text-slate-400">${escapeHtml(label)}</div>
+              <div class="text-lg font-bold text-white mt-0.5">${fmtNum(price, 2)}</div>
+              <div class="text-xs font-semibold ${color}">${fmtSigned(chg, 2)} (${fmtSigned(pct, 2, "%")})</div>
+            </div>
+            `
+          );
+        });
+      } catch (e) {
+        grid.innerHTML = `<div class="col-span-full text-xs text-rose-400">無法取得大盤即時報價：${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    async function loadWatchlistQuotes() {
+      const grid = document.getElementById("live-watchlist-grid");
+      const entries = Object.entries(cachedPortfolio).sort((a, b) => a[0].localeCompare(b[0]));
+
+      if (entries.length === 0) {
+        grid.innerHTML = `<div class="col-span-full text-sm text-slate-400">尚未新增持股，可於上方查詢任意代號（預設顯示台積電 2330）。</div>`;
+        return;
+      }
+
+      const symList = entries.map(([, s]) => toCnyesSymbol(s.market, s.ticker)).join(",");
+      try {
+        const resp = await fetch(`https://ws.api.cnyes.com/ws/api/v1/quote/quotes/${symList}?column=A`);
+        const json = await resp.json();
+        const quoteMap = {};
+        (json.data || []).forEach((item) => {
+          quoteMap[item["0"]] = item;
+        });
+
+        grid.innerHTML = "";
+        entries.forEach(([docId, s]) => {
+          const cSym = toCnyesSymbol(s.market, s.ticker);
+          const q = quoteMap[cSym] || {};
+          const price = q["6"];
+          const chg = q["11"];
+          const pct = q["56"];
+          const vol = q["800001"];
+          const color = colorBySign(pct);
+          const volUnit = s.market === "TW" ? "張" : "股";
+
+          let pnlHtml = "";
+          if (price != null && s.avg_cost > 0) {
+            const pnlPct = ((price - s.avg_cost) / s.avg_cost) * 100;
+            const pnlColor = pnlPct >= 0 ? "text-rose-300 bg-rose-500/15" : "text-emerald-300 bg-emerald-500/15";
+            pnlHtml = `<span class="px-1.5 py-0.5 rounded text-[11px] font-semibold ${pnlColor}">均價損益 ${fmtSigned(pnlPct, 2, "%")}</span>`;
+          }
+
+          const isSelected = activeLiveTarget && activeLiveTarget.market === s.market && activeLiveTarget.ticker === s.ticker;
+          const ringClass = isSelected ? "border-sky-400 ring-1 ring-sky-400/60 bg-slate-800" : "border-slate-700 hover:border-slate-500 bg-slate-900/60";
+
+          grid.insertAdjacentHTML(
+            "beforeend",
+            `
+            <button type="button" data-live-doc-id="${escapeHtml(docId)}" class="text-left border rounded-xl p-3.5 transition ${ringClass}">
+              <div class="flex justify-between items-start gap-2">
+                <div>
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${s.market === "TW" ? "bg-indigo-500/30 text-indigo-300" : "bg-cyan-500/30 text-cyan-300"}">${escapeHtml(s.market)}</span>
+                  <span class="font-bold text-white ml-1">${escapeHtml(s.name)}</span>
+                  <span class="text-xs text-slate-400">(${escapeHtml(s.ticker)})</span>
+                </div>
+                <div class="text-right">
+                  <div class="text-lg font-extrabold ${color}">${fmtNum(price, 2)}</div>
+                  <div class="text-xs font-semibold ${color}">${fmtSigned(chg, 2)} (${fmtSigned(pct, 2, "%")})</div>
+                </div>
+              </div>
+              <div class="flex flex-wrap justify-between items-center gap-2 mt-2.5 pt-2 border-t border-slate-700/70 text-[11px] text-slate-400">
+                <span>量: ${vol != null ? Math.round(vol).toLocaleString("en-US") : "--"} ${volUnit}</span>
+                ${pnlHtml}
+              </div>
+            </button>
+            `
+          );
+        });
+      } catch (e) {
+        grid.innerHTML = `<div class="col-span-full text-xs text-rose-400">載入持股即時報價失敗：${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function highlightWatchlistSelection() {
+      document.querySelectorAll("[data-live-doc-id]").forEach((el) => {
+        const isMatch =
+          activeLiveTarget && el.dataset.liveDocId === `${activeLiveTarget.market}_${activeLiveTarget.ticker}`;
+        el.classList.toggle("border-sky-400", isMatch);
+        el.classList.toggle("ring-1", isMatch);
+        el.classList.toggle("ring-sky-400/60", isMatch);
+        el.classList.toggle("border-slate-700", !isMatch);
+      });
+    }
+
+    async function loadLiveStockDetail(target, showLoader = true) {
+      const loader = document.getElementById("live-detail-loading");
+      const panel = document.getElementById("live-detail-panel");
+      if (showLoader) {
+        loader.classList.remove("hidden");
+      }
+
+      const cSym = toCnyesSymbol(target.market, target.ticker);
+      try {
+        const [intradayRes, dailyRes] = await Promise.all([
+          fetch(`https://ws.api.cnyes.com/ws/api/v1/charting/history?resolution=5&symbol=${encodeURIComponent(cSym)}&quote=1`).then((r) => r.json()),
+          fetch(`https://ws.api.cnyes.com/ws/api/v1/charting/history?resolution=D&symbol=${encodeURIComponent(cSym)}&quote=1`).then((r) => r.json()),
+        ]);
+
+        const intradayData = intradayRes?.data || {};
+        const dailyData = dailyRes?.data || {};
+        const quote = intradayData.quote || dailyData.quote || {};
+
+        const intradayBars = normalizeCnyesBars(intradayData);
+        const dailyBars = normalizeCnyesBars(dailyData);
+
+        liveDetailCache = {
+          target,
+          quote,
+          intradayBars,
+          dailyBars,
+        };
+
+        loader.classList.add("hidden");
+        panel.classList.remove("hidden");
+
+        renderQuoteHeaderAndMetrics(target, quote, dailyBars);
+        renderMainChart();
+        renderTechnicalAnalysis(quote, dailyBars);
+        renderAiStrategyLink(target);
+
+        if (target.market === "TW") {
+          loadTaiwanChipAndFundamental(target.ticker);
+        } else {
+          renderUsChipFallback();
+        }
+      } catch (e) {
+        loader.classList.remove("hidden");
+        loader.innerText = `載入 ${target.ticker} 即時走勢失敗：${e.message}`;
+      }
+    }
+
+    function normalizeCnyesBars(d) {
+      if (!d || !Array.isArray(d.t) || d.t.length === 0) return [];
+      const bars = [];
+      for (let i = 0; i < d.t.length; i++) {
+        bars.push({
+          t: d.t[i],
+          o: Number(d.o?.[i]),
+          h: Number(d.h?.[i]),
+          l: Number(d.l?.[i]),
+          c: Number(d.c?.[i]),
+          v: Number(d.v?.[i] || 0),
+          vwap: d.vwap?.[i] != null ? Number(d.vwap[i]) : null,
+        });
+      }
+      // Cnyes 回傳順序為由新到舊，翻轉為時間由舊到新
+      bars.sort((a, b) => a.t - b.t);
+      return bars;
+    }
+
+    function renderQuoteHeaderAndMetrics(target, quote, dailyBars) {
+      const displayName = quote["200009"] || target.name || target.ticker;
+      const price = quote["6"] != null ? Number(quote["6"]) : dailyBars.at(-1)?.c;
+      const chg = quote["11"] != null ? Number(quote["11"]) : 0;
+      const pct = quote["56"] != null ? Number(quote["56"]) : 0;
+      const prev = quote["21"] != null ? Number(quote["21"]) : null;
+      const high = quote["12"] != null ? Number(quote["12"]) : null;
+      const low = quote["13"] != null ? Number(quote["13"]) : null;
+      const vwap = quote["3404"] != null ? Number(quote["3404"]) : null;
+      const vol = quote["800001"] != null ? Number(quote["800001"]) : dailyBars.at(-1)?.v;
+      const limitUp = quote["75"];
+      const limitDown = quote["76"];
+      const isTrading = Number(quote.isTrading) === 1;
+      const volUnit = target.market === "TW" ? "張" : "股";
+
+      document.getElementById("ld-title").innerText = `${displayName} (${target.ticker})`;
+      const mBadge = document.getElementById("ld-market-badge");
+      mBadge.innerText = target.market;
+      mBadge.className =
+        target.market === "TW"
+          ? "px-2 py-0.5 rounded text-xs font-bold bg-indigo-500/30 text-indigo-300"
+          : "px-2 py-0.5 rounded text-xs font-bold bg-cyan-500/30 text-cyan-300";
+
+      const tBadge = document.getElementById("ld-trading-badge");
+      tBadge.innerText = isTrading ? "● 盤中交易中" : "已收盤 / 盤前";
+      tBadge.className = isTrading
+        ? "px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+        : "px-2 py-0.5 rounded text-xs font-semibold bg-slate-700 text-slate-300";
+
+      const color = colorBySign(pct);
+      const priceEl = document.getElementById("ld-price");
+      priceEl.innerText = fmtNum(price, 2);
+      priceEl.className = `text-4xl font-extrabold tracking-tight ${color}`;
+
+      const chgEl = document.getElementById("ld-change");
+      chgEl.innerText = `${fmtSigned(chg, 2)} (${fmtSigned(pct, 2, "%")})`;
+      chgEl.className = `text-lg font-bold ${color}`;
+
+      const pnlEl = document.getElementById("ld-pnl-badge");
+      if (target.avg_cost > 0 && price != null) {
+        const pnlPct = ((price - target.avg_cost) / target.avg_cost) * 100;
+        pnlEl.classList.remove("hidden");
+        pnlEl.innerText = `均價 ${fmtNum(target.avg_cost, 2)} ｜ 損益 ${fmtSigned(pnlPct, 2, "%")}`;
+        pnlEl.className =
+          pnlPct >= 0
+            ? "px-2.5 py-0.5 rounded-full text-xs font-bold border bg-rose-500/15 text-rose-300 border-rose-500/40"
+            : "px-2.5 py-0.5 rounded-full text-xs font-bold border bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
+      } else {
+        pnlEl.classList.add("hidden");
+      }
+
+      document.getElementById("ld-prev").innerText = fmtNum(prev, 2);
+      document.getElementById("ld-high").innerText = fmtNum(high, 2);
+      document.getElementById("ld-low").innerText = fmtNum(low, 2);
+      document.getElementById("ld-vwap").innerText = fmtNum(vwap, 2);
+      document.getElementById("ld-vol").innerText = vol != null ? `${Math.round(vol).toLocaleString("en-US")} ${volUnit}` : "--";
+
+      // 計算 5 日均量與量比
+      const pastVols = dailyBars.slice(-6, -1).map((b) => b.v).filter((v) => v > 0);
+      const avg5Vol = pastVols.length ? pastVols.reduce((a, b) => a + b, 0) / pastVols.length : null;
+      const volRatioEl = document.getElementById("ld-vol-ratio");
+      if (avg5Vol && vol != null) {
+        const ratio = vol / avg5Vol;
+        volRatioEl.innerText = `${ratio.toFixed(2)}x`;
+        volRatioEl.className =
+          ratio >= 1.5
+            ? "text-sm font-bold text-rose-400 mt-0.5"
+            : ratio <= 0.6
+              ? "text-sm font-bold text-slate-400 mt-0.5"
+              : "text-sm font-bold text-sky-300 mt-0.5";
+      } else {
+        volRatioEl.innerText = "--";
+      }
+
+      // 振幅
+      if (high != null && low != null && prev > 0) {
+        const amp = ((high - low) / prev) * 100;
+        document.getElementById("ld-amp").innerText = `${amp.toFixed(2)}%`;
+      } else {
+        document.getElementById("ld-amp").innerText = "--";
+      }
+
+      // 漲跌停
+      if (limitUp != null && limitDown != null) {
+        document.getElementById("ld-limits").innerHTML = `<span class="text-rose-400">${fmtNum(limitUp, 2)}</span> / <span class="text-emerald-400">${fmtNum(limitDown, 2)}</span>`;
+      } else {
+        document.getElementById("ld-limits").innerText = "無漲跌幅限制";
+      }
+
+      // 當日價格區間條
+      if (high != null && low != null && price != null && high > low) {
+        const pos = Math.max(0, Math.min(100, ((price - low) / (high - low)) * 100));
+        document.getElementById("ld-range-bar").style.width = `${pos.toFixed(1)}%`;
+        document.getElementById("ld-range-label").innerText = `低 ${fmtNum(low, 2)} ── 目前位於 ${pos.toFixed(0)}% ── 高 ${fmtNum(high, 2)}`;
+      } else {
+        document.getElementById("ld-range-bar").style.width = "50%";
+        document.getElementById("ld-range-label").innerText = "區間平盤";
+      }
+    }
+
+    function renderMainChart() {
+      if (!liveDetailCache) return;
+      const { target, quote, intradayBars, dailyBars } = liveDetailCache;
+
+      if (priceChartInstance) priceChartInstance.destroy();
+      if (volumeChartInstance) volumeChartInstance.destroy();
+
+      const priceCtx = document.getElementById("live-price-chart").getContext("2d");
+      const volCtx = document.getElementById("live-volume-chart").getContext("2d");
+
+      const prevClose = quote["21"] != null ? Number(quote["21"]) : null;
+      const isUp = Number(quote["56"] || 0) >= 0;
+
+      if (liveChartMode === "intraday" && intradayBars.length > 0) {
+        const labels = intradayBars.map((b) => {
+          const dt = new Date(b.t * 1000);
+          return dt.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
+        });
+        const closes = intradayBars.map((b) => b.c);
+        const vwaps = intradayBars.map((b) => b.vwap);
+        const vols = intradayBars.map((b) => b.v);
+        const volColors = intradayBars.map((b, i) => {
+          const ref = i > 0 ? intradayBars[i - 1].c : (prevClose ?? b.o);
+          return b.c >= ref ? "rgba(251, 113, 133, 0.7)" : "rgba(52, 211, 153, 0.7)";
+        });
+
+        const datasets = [
+          {
+            label: "即時價 (5分K)",
+            data: closes,
+            borderColor: isUp ? "#fb7185" : "#34d399",
+            backgroundColor: isUp ? "rgba(251, 113, 133, 0.12)" : "rgba(52, 211, 153, 0.12)",
+            borderWidth: 2,
+            fill: true,
+            pointRadius: 0,
+            tension: 0.15,
+          },
+          {
+            label: "當日均價線 (VWAP)",
+            data: vwaps,
+            borderColor: "#fbbf24",
+            borderWidth: 1.5,
+            borderDash: [4, 3],
+            pointRadius: 0,
+            fill: false,
+          },
+        ];
+
+        if (prevClose != null) {
+          datasets.push({
+            label: "昨收參考價",
+            data: labels.map(() => prevClose),
+            borderColor: "rgba(148, 163, 184, 0.6)",
+            borderWidth: 1,
+            borderDash: [6, 6],
+            pointRadius: 0,
+            fill: false,
+          });
+        }
+
+        priceChartInstance = new Chart(priceCtx, {
+          type: "line",
+          data: { labels, datasets },
+          options: buildChartOptions("價格"),
+        });
+
+        volumeChartInstance = new Chart(volCtx, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{ label: `分時成交量 (${target.market === "TW" ? "張" : "股"})`, data: vols, backgroundColor: volColors }],
+          },
+          options: buildVolumeOptions(),
+        });
+      } else {
+        // 近 60 日日 K 走勢 + MA5 / MA20 / MA60
+        const closesAll = dailyBars.map((b) => b.c);
+        const ma5All = calcSMAArray(closesAll, 5);
+        const ma20All = calcSMAArray(closesAll, 20);
+        const ma60All = calcSMAArray(closesAll, 60);
+
+        const sliceCount = 60;
+        const start = Math.max(0, dailyBars.length - sliceCount);
+        const sliced = dailyBars.slice(start);
+        const labels = sliced.map((b) => new Date(b.t * 1000).toLocaleDateString("zh-TW", { month: "2-digit", day: "2-digit" }));
+        const vols = sliced.map((b) => b.v);
+        const volColors = sliced.map((b) => (b.c >= b.o ? "rgba(251, 113, 133, 0.7)" : "rgba(52, 211, 153, 0.7)"));
+
+        priceChartInstance = new Chart(priceCtx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              { label: "收盤價", data: sliced.map((b) => b.c), borderColor: "#38bdf8", backgroundColor: "rgba(56, 189, 248, 0.1)", borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1 },
+              { label: "MA5", data: ma5All.slice(start), borderColor: "#fbbf24", borderWidth: 1.3, pointRadius: 0, fill: false },
+              { label: "MA20 (月線)", data: ma20All.slice(start), borderColor: "#f472b6", borderWidth: 1.5, pointRadius: 0, fill: false },
+              { label: "MA60 (季線)", data: ma60All.slice(start), borderColor: "#a78bfa", borderWidth: 1.5, pointRadius: 0, fill: false },
+            ],
+          },
+          options: buildChartOptions("日 K 收盤價"),
+        });
+
+        volumeChartInstance = new Chart(volCtx, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{ label: `日成交量 (${target.market === "TW" ? "張" : "股"})`, data: vols, backgroundColor: volColors }],
+          },
+          options: buildVolumeOptions(),
+        });
+      }
+    }
+
+    function buildChartOptions(yTitle) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { labels: { color: "#cbd5e1", boxWidth: 12, font: { size: 11 } } },
+          tooltip: { backgroundColor: "rgba(15, 23, 42, 0.95)", titleColor: "#f8fafc", bodyColor: "#e2e8f0", borderColor: "#334155", borderWidth: 1 },
+        },
+        scales: {
+          x: { ticks: { color: "#94a3b8", maxTicksLimit: 10, font: { size: 10 } }, grid: { color: "rgba(51, 65, 85, 0.35)" } },
+          y: { position: "right", ticks: { color: "#94a3b8", font: { size: 10 } }, grid: { color: "rgba(51, 65, 85, 0.35)" }, title: { display: false, text: yTitle } },
+        },
+      };
+    }
+
+    function buildVolumeOptions() {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: "rgba(15, 23, 42, 0.95)", borderColor: "#334155", borderWidth: 1 },
+        },
+        scales: {
+          x: { display: false },
+          y: { position: "right", ticks: { color: "#64748b", maxTicksLimit: 3, font: { size: 9 } }, grid: { color: "rgba(51, 65, 85, 0.25)" } },
+        },
+      };
+    }
+
+    // ==================== 技術指標運算引擎 ====================
+    function calcSMAArray(values, period) {
+      return values.map((_, i) => {
+        if (i + 1 < period) return null;
+        let sum = 0;
+        for (let j = i - period + 1; j <= i; j++) sum += values[j];
+        return sum / period;
+      });
+    }
+
+    function calcEMAArray(values, period) {
+      const k = 2 / (period + 1);
+      const out = [];
+      let prev = null;
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] == null) {
+          out.push(null);
+          continue;
+        }
+        prev = prev === null ? values[i] : values[i] * k + prev * (1 - k);
+        out.push(prev);
+      }
+      return out;
+    }
+
+    function calcRSI(closes, period = 14) {
+      if (closes.length <= period) return null;
+      let gains = 0;
+      let losses = 0;
+      for (let i = 1; i <= period; i++) {
+        const diff = closes[i] - closes[i - 1];
+        if (diff >= 0) gains += diff;
+        else losses -= diff;
+      }
+      let avgGain = gains / period;
+      let avgLoss = losses / period;
+      for (let i = period + 1; i < closes.length; i++) {
+        const diff = closes[i] - closes[i - 1];
+        avgGain = (avgGain * (period - 1) + (diff > 0 ? diff : 0)) / period;
+        avgLoss = (avgLoss * (period - 1) + (diff < 0 ? -diff : 0)) / period;
+      }
+      if (avgLoss === 0) return 100;
+      const rs = avgGain / avgLoss;
+      return 100 - 100 / (1 + rs);
+    }
+
+    function calcKD(bars, period = 9) {
+      if (bars.length < period) return { k: null, d: null, prevK: null, prevD: null };
+      let k = 50;
+      let d = 50;
+      let prevK = 50;
+      let prevD = 50;
+      for (let i = period - 1; i < bars.length; i++) {
+        let highN = -Infinity;
+        let lowN = Infinity;
+        for (let j = i - period + 1; j <= i; j++) {
+          if (bars[j].h > highN) highN = bars[j].h;
+          if (bars[j].l < lowN) lowN = bars[j].l;
+        }
+        const rsv = highN === lowN ? 50 : ((bars[i].c - lowN) / (highN - lowN)) * 100;
+        prevK = k;
+        prevD = d;
+        k = (2 / 3) * k + (1 / 3) * rsv;
+        d = (2 / 3) * d + (1 / 3) * k;
+      }
+      return { k, d, prevK, prevD };
+    }
+
+    function renderTechnicalAnalysis(quote, dailyBars) {
+      if (!dailyBars || dailyBars.length < 20) return;
+
+      // 將最新即時價併入最後一根日 K，確保技術指標即時反映盤中價
+      const bars = dailyBars.map((b) => ({ ...b }));
+      const livePrice = quote["6"] != null ? Number(quote["6"]) : bars.at(-1).c;
+      const liveHigh = quote["12"] != null ? Number(quote["12"]) : livePrice;
+      const liveLow = quote["13"] != null ? Number(quote["13"]) : livePrice;
+      const vwap = quote["3404"] != null ? Number(quote["3404"]) : null;
+
+      const lastBar = bars[bars.length - 1];
+      lastBar.c = livePrice;
+      lastBar.h = Math.max(lastBar.h, liveHigh);
+      lastBar.l = Math.min(lastBar.l, liveLow);
+
+      const closes = bars.map((b) => b.c);
+      const ma5 = calcSMAArray(closes, 5).at(-1);
+      const ma10 = calcSMAArray(closes, 10).at(-1);
+      const ma20 = calcSMAArray(closes, 20).at(-1);
+      const ma60 = calcSMAArray(closes, 60).at(-1);
+      const bias20 = ma20 ? ((livePrice - ma20) / ma20) * 100 : null;
+
+      const rsi14 = calcRSI(closes, 14);
+      const kd = calcKD(bars, 9);
+
+      const ema12 = calcEMAArray(closes, 12);
+      const ema26 = calcEMAArray(closes, 26);
+      const difArr = ema12.map((v, i) => (v != null && ema26[i] != null ? v - ema26[i] : null));
+      const macdArr = calcEMAArray(difArr, 9);
+      const dif = difArr.at(-1);
+      const macd = macdArr.at(-1);
+      const osc = dif != null && macd != null ? dif - macd : null;
+      const prevOsc = difArr.at(-2) != null && macdArr.at(-2) != null ? difArr.at(-2) - macdArr.at(-2) : null;
+
+      // 布林通道 (20, 2σ)
+      const last20 = closes.slice(-20);
+      const mean20 = last20.reduce((a, b) => a + b, 0) / last20.length;
+      const std20 = Math.sqrt(last20.reduce((s, v) => s + (v - mean20) ** 2, 0) / last20.length);
+      const bbUp = mean20 + 2 * std20;
+      const bbLow = mean20 - 2 * std20;
+      const bbPct = bbUp > bbLow ? ((livePrice - bbLow) / (bbUp - bbLow)) * 100 : 50;
+
+      // 20 日區間支撐壓力
+      const recent20 = bars.slice(-20);
+      const high20 = Math.max(...recent20.map((b) => b.h));
+      const low20 = Math.min(...recent20.map((b) => b.l));
+      const fromHighPct = high20 > 0 ? ((livePrice - high20) / high20) * 100 : null;
+
+      // 綜合評分 (-5 ~ +5)
+      let score = 0;
+      if (ma5 && ma20) score += livePrice > ma20 ? 1 : -1;
+      if (ma5 && ma20 && ma60) {
+        if (ma5 > ma20 && ma20 > ma60) score += 1;
+        else if (ma5 < ma20 && ma20 < ma60) score -= 1;
+      }
+      if (rsi14 != null) score += rsi14 > 55 ? 1 : rsi14 < 45 ? -1 : 0;
+      if (kd.k != null && kd.d != null) score += kd.k > kd.d ? 1 : -1;
+      if (osc != null) score += osc > 0 ? 1 : -1;
+      if (vwap != null) score += livePrice >= vwap ? 0.5 : -0.5;
+
+      const overallBadge = document.getElementById("ta-overall-badge");
+      let overallText = "震盪中性";
+      let overallStyle = "bg-slate-600/40 text-slate-200 border-slate-500/50";
+      if (score >= 3) {
+        overallText = "🔥 強勢偏多";
+        overallStyle = "bg-rose-500/20 text-rose-300 border-rose-500/50";
+      } else if (score >= 1) {
+        overallText = "📈 溫和偏多";
+        overallStyle = "bg-rose-500/15 text-rose-300 border-rose-500/40";
+      } else if (score <= -3) {
+        overallText = "❄️ 弱勢偏空";
+        overallStyle = "bg-emerald-500/20 text-emerald-300 border-emerald-500/50";
+      } else if (score <= -1) {
+        overallText = "📉 溫和偏空";
+        overallStyle = "bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
+      }
+      overallBadge.innerText = `${overallText} (評分 ${score > 0 ? "+" : ""}${score.toFixed(1)})`;
+      overallBadge.className = `self-start sm:self-center px-3 py-1 rounded-lg text-xs font-bold border ${overallStyle}`;
+
+      // 填入均線
+      const maSignal =
+        ma5 && ma20 && ma60 && ma5 > ma20 && ma20 > ma60
+          ? "多頭排列"
+          : ma5 && ma20 && ma60 && ma5 < ma20 && ma20 < ma60
+            ? "空頭排列"
+            : livePrice > (ma20 || 0)
+              ? "站上月線"
+              : "跌破月線";
+      document.getElementById("ta-ma-signal").innerText = maSignal;
+      document.getElementById("ta-ma5").innerText = fmtNum(ma5, 2);
+      document.getElementById("ta-ma10").innerText = fmtNum(ma10, 2);
+      document.getElementById("ta-ma20").innerText = fmtNum(ma20, 2);
+      document.getElementById("ta-ma60").innerText = fmtNum(ma60, 2);
+      const biasEl = document.getElementById("ta-bias20");
+      biasEl.innerText = fmtSigned(bias20, 2, "%");
+      biasEl.className = `text-right font-semibold ${colorBySign(bias20)}`;
+
+      // 填入 RSI & KD
+      const rsiLabel = rsi14 > 70 ? "過熱" : rsi14 < 30 ? "超賣" : "中性";
+      document.getElementById("ta-osc-signal").innerText = `RSI ${rsiLabel}`;
+      document.getElementById("ta-rsi14").innerText = `${fmtNum(rsi14, 1)} (${rsiLabel})`;
+      document.getElementById("ta-k9").innerText = fmtNum(kd.k, 1);
+      document.getElementById("ta-d9").innerText = fmtNum(kd.d, 1);
+
+      let kdCross = kd.k >= kd.d ? "偏多 (K≥D)" : "偏空 (K<D)";
+      if (kd.prevK < kd.prevD && kd.k >= kd.d) kdCross = "⚡ 黃金交叉";
+      else if (kd.prevK > kd.prevD && kd.k <= kd.d) kdCross = "⚠️ 死亡交叉";
+      document.getElementById("ta-kd-cross").innerText = kdCross;
+
+      const vwapPosEl = document.getElementById("ta-vwap-pos");
+      if (vwap) {
+        const diffPct = ((livePrice - vwap) / vwap) * 100;
+        vwapPosEl.innerText = `${livePrice >= vwap ? "均價之上" : "均價之下"} (${fmtSigned(diffPct, 2, "%")})`;
+        vwapPosEl.className = `text-right font-semibold ${colorBySign(diffPct)}`;
+      } else {
+        vwapPosEl.innerText = "--";
+      }
+
+      // 填入 MACD & 布林
+      let macdText = osc >= 0 ? "多方紅柱" : "空方綠柱";
+      if (prevOsc < 0 && osc >= 0) macdText = "⚡ 翻紅轉強";
+      else if (prevOsc > 0 && osc < 0) macdText = "⚠️ 翻綠轉弱";
+      document.getElementById("ta-macd-signal").innerText = macdText;
+      document.getElementById("ta-macd-vals").innerText = `${fmtNum(dif, 2)} / ${fmtNum(macd, 2)}`;
+      const oscEl = document.getElementById("ta-macd-osc");
+      oscEl.innerText = fmtSigned(osc, 2);
+      oscEl.className = `text-right font-semibold ${colorBySign(osc)}`;
+      document.getElementById("ta-bb-up").innerText = fmtNum(bbUp, 2);
+      document.getElementById("ta-bb-low").innerText = fmtNum(bbLow, 2);
+      document.getElementById("ta-bb-pct").innerText = `${fmtNum(bbPct, 1)}%`;
+
+      // 填入支撐壓力
+      document.getElementById("ta-res20").innerText = fmtNum(high20, 2);
+      document.getElementById("ta-sup20").innerText = fmtNum(low20, 2);
+      document.getElementById("ta-def-ma20").innerText = fmtNum(ma20, 2);
+      document.getElementById("ta-def-vwap").innerText = fmtNum(vwap, 2);
+      document.getElementById("ta-from-high").innerText = fmtSigned(fromHighPct, 2, "%");
+
+      document.getElementById("ta-summary").innerText =
+        `${maSignal}｜RSI ${fmtNum(rsi14, 1)}｜KD ${kdCross}｜MACD ${macdText}｜布林 %B ${fmtNum(bbPct, 0)}%`;
+    }
+
+    // ==================== 三大法人 / 融資融券 / 估值 / 月營收 (FinMind) ====================
+    async function loadTaiwanChipAndFundamental(ticker) {
+      document.getElementById("inst-us-notice").classList.add("hidden");
+      document.getElementById("inst-tw-body").classList.remove("hidden");
+
+      const start15d = getDateOffsetStr(18);
+      const start15m = getDateOffsetStr(430);
+      const base = "https://api.finmindtrade.com/api/v4/data";
+
+      const [instRes, marginRes, perRes, revRes] = await Promise.allSettled([
+        fetch(`${base}?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${encodeURIComponent(ticker)}&start_date=${start15d}`).then((r) => r.json()),
+        fetch(`${base}?dataset=TaiwanStockMarginPurchaseShortSale&data_id=${encodeURIComponent(ticker)}&start_date=${start15d}`).then((r) => r.json()),
+        fetch(`${base}?dataset=TaiwanStockPER&data_id=${encodeURIComponent(ticker)}&start_date=${start15d}`).then((r) => r.json()),
+        fetch(`${base}?dataset=TaiwanStockMonthRevenue&data_id=${encodeURIComponent(ticker)}&start_date=${start15m}`).then((r) => r.json()),
+      ]);
+
+      renderInstitutionalSection(instRes.status === "fulfilled" ? instRes.value?.data || [] : []);
+      renderMarginSection(marginRes.status === "fulfilled" ? marginRes.value?.data || [] : []);
+      renderValuationAndRevenue(
+        perRes.status === "fulfilled" ? perRes.value?.data || [] : [],
+        revRes.status === "fulfilled" ? revRes.value?.data || [] : []
+      );
+    }
+
+    function renderInstitutionalSection(records) {
+      if (instChartInstance) instChartInstance.destroy();
+
+      if (!records || records.length === 0) {
+        document.getElementById("inst-date-note").innerText = "查無近期三大法人資料";
+        ["inst-foreign", "inst-trust", "inst-dealer", "inst-total"].forEach((id) => {
+          document.getElementById(id).innerText = "--";
+        });
+        return;
+      }
+
+      const byDate = {};
+      records.forEach((r) => {
+        if (!byDate[r.date]) byDate[r.date] = { date: r.date, foreign: 0, trust: 0, dealer: 0 };
+        const netLots = (Number(r.buy || 0) - Number(r.sell || 0)) / 1000;
+        if (r.name === "Foreign_Investor" || r.name === "Foreign_Dealer_Self") {
+          byDate[r.date].foreign += netLots;
+        } else if (r.name === "Investment_Trust") {
+          byDate[r.date].trust += netLots;
+        } else if (r.name === "Dealer_self" || r.name === "Dealer_Hedging") {
+          byDate[r.date].dealer += netLots;
+        }
+      });
+
+      const days = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+      const recent5 = days.slice(-5);
+      const latest = recent5.at(-1);
+      const sum5 = recent5.reduce(
+        (acc, d) => ({
+          foreign: acc.foreign + d.foreign,
+          trust: acc.trust + d.trust,
+          dealer: acc.dealer + d.dealer,
+        }),
+        { foreign: 0, trust: 0, dealer: 0 }
+      );
+
+      // 計算外資與投信連買／連賣天數
+      const calcStreak = (key) => {
+        let count = 0;
+        let dir = 0;
+        for (let i = days.length - 1; i >= 0; i--) {
+          const v = Math.round(days[i][key]);
+          if (v === 0) break;
+          const curDir = v > 0 ? 1 : -1;
+          if (dir === 0) dir = curDir;
+          if (curDir === dir) count++;
+          else break;
+        }
+        return dir === 0 ? "平" : `${dir > 0 ? "連買" : "連賣"} ${count} 日`;
+      };
+
+      const latestTotal = latest.foreign + latest.trust + latest.dealer;
+      const sum5Total = sum5.foreign + sum5.trust + sum5.dealer;
+
+      document.getElementById("inst-date-note").innerText = `最新公告交易日：${latest.date}（單位：張）`;
+      document.getElementById("inst-streak-badge").innerText = `外資 ${calcStreak("foreign")} ｜ 投信 ${calcStreak("trust")}`;
+
+      const setCard = (valId, sumId, val, sumVal) => {
+        const el = document.getElementById(valId);
+        el.innerText = fmtLots(val);
+        el.className = `text-lg font-bold mt-1 ${colorBySign(val)}`;
+        document.getElementById(sumId).innerText = `近5日: ${fmtLots(sumVal)}`;
+      };
+      setCard("inst-foreign", "inst-foreign-5d", latest.foreign, sum5.foreign);
+      setCard("inst-trust", "inst-trust-5d", latest.trust, sum5.trust);
+      setCard("inst-dealer", "inst-dealer-5d", latest.dealer, sum5.dealer);
+      setCard("inst-total", "inst-total-5d", latestTotal, sum5Total);
+
+      const ctx = document.getElementById("inst-chart").getContext("2d");
+      instChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: recent5.map((d) => d.date.slice(5)),
+          datasets: [
+            { label: "外資", data: recent5.map((d) => Math.round(d.foreign)), backgroundColor: "rgba(56, 189, 248, 0.8)" },
+            { label: "投信", data: recent5.map((d) => Math.round(d.trust)), backgroundColor: "rgba(251, 113, 133, 0.8)" },
+            { label: "自營商", data: recent5.map((d) => Math.round(d.dealer)), backgroundColor: "rgba(251, 191, 36, 0.8)" },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#cbd5e1", boxWidth: 12, font: { size: 11 } } },
+            tooltip: { backgroundColor: "rgba(15, 23, 42, 0.95)", borderColor: "#334155", borderWidth: 1 },
+          },
+          scales: {
+            x: { ticks: { color: "#94a3b8", font: { size: 11 } }, grid: { color: "rgba(51, 65, 85, 0.25)" } },
+            y: { ticks: { color: "#94a3b8", font: { size: 10 } }, grid: { color: "rgba(51, 65, 85, 0.35)" } },
+          },
+        },
+      });
+    }
+
+    function renderMarginSection(records) {
+      if (!records || records.length === 0) {
+        document.getElementById("margin-date").innerText = "無資料";
+        ["mg-buy", "mg-short", "mg-ratio", "mg-note"].forEach((id) => (document.getElementById(id).innerText = "--"));
+        return;
+      }
+      const latest = records.at(-1);
+      const marginBal = Number(latest.MarginPurchaseTodayBalance || 0);
+      const marginDiff = marginBal - Number(latest.MarginPurchaseYesterdayBalance || 0);
+      const shortBal = Number(latest.ShortSaleTodayBalance || 0);
+      const shortDiff = shortBal - Number(latest.ShortSaleYesterdayBalance || 0);
+      const ratio = marginBal > 0 ? (shortBal / marginBal) * 100 : 0;
+
+      document.getElementById("margin-date").innerText = latest.date;
+      document.getElementById("mg-buy").innerHTML = `${marginBal.toLocaleString("en-US")} (<span class="${colorBySign(marginDiff)}">${fmtSigned(marginDiff, 0)}</span>)`;
+      document.getElementById("mg-short").innerHTML = `${shortBal.toLocaleString("en-US")} (<span class="${colorBySign(shortDiff)}">${fmtSigned(shortDiff, 0)}</span>)`;
+      document.getElementById("mg-ratio").innerText = `${ratio.toFixed(2)}%`;
+
+      let note = "籌碼中性";
+      if (ratio >= 20) note = "🔥 高券資比 (留意軋空)";
+      else if (marginDiff < 0 && shortDiff > 0) note = "資減券增 (偏多訊號)";
+      else if (marginDiff > 0 && shortDiff < 0) note = "資增券減 (散戶進場)";
+      else if (marginDiff < 0) note = "融資減肥 (籌碼沉澱)";
+      document.getElementById("mg-note").innerText = note;
+    }
+
+    function renderValuationAndRevenue(perRecords, revRecords) {
+      if (perRecords && perRecords.length > 0) {
+        const p = perRecords.at(-1);
+        document.getElementById("val-date").innerText = p.date;
+        document.getElementById("val-per").innerText = p.PER > 0 ? `${fmtNum(p.PER, 1)}x` : "--";
+        document.getElementById("val-pbr").innerText = p.PBR > 0 ? `${fmtNum(p.PBR, 2)}x` : "--";
+        document.getElementById("val-yield").innerText = p.dividend_yield != null ? `${fmtNum(p.dividend_yield, 2)}%` : "--";
+      } else {
+        document.getElementById("val-date").innerText = "無估值資料";
+        ["val-per", "val-pbr", "val-yield"].forEach((id) => (document.getElementById(id).innerText = "--"));
+      }
+
+      if (revRecords && revRecords.length > 0) {
+        const sorted = [...revRecords].sort((a, b) => a.date.localeCompare(b.date));
+        const latest = sorted.at(-1);
+        const prevM = sorted.length >= 2 ? sorted.at(-2) : null;
+        const prevY = sorted.find(
+          (r) => r.revenue_year === latest.revenue_year - 1 && r.revenue_month === latest.revenue_month
+        );
+        const revBillion = Number(latest.revenue || 0) / 1e8;
+        const mom = prevM && prevM.revenue > 0 ? ((latest.revenue - prevM.revenue) / prevM.revenue) * 100 : null;
+        const yoy = prevY && prevY.revenue > 0 ? ((latest.revenue - prevY.revenue) / prevY.revenue) * 100 : null;
+
+        document.getElementById("rev-val").innerText = `${latest.revenue_year}/${String(latest.revenue_month).padStart(2, "0")} ｜ ${revBillion.toFixed(2)} 億`;
+        document.getElementById("rev-growth").innerHTML =
+          `MoM <span class="${colorBySign(mom)}">${fmtSigned(mom, 1, "%")}</span> / YoY <span class="${colorBySign(yoy)}">${fmtSigned(yoy, 1, "%")}</span>`;
+      } else {
+        document.getElementById("rev-val").innerText = "--";
+        document.getElementById("rev-growth").innerText = "--";
+      }
+    }
+
+    function renderUsChipFallback() {
+      if (instChartInstance) instChartInstance.destroy();
+      document.getElementById("inst-tw-body").classList.add("hidden");
+      document.getElementById("inst-us-notice").classList.remove("hidden");
+      document.getElementById("inst-date-note").innerText = "美股市場不適用台股三大法人資料";
+      document.getElementById("inst-streak-badge").innerText = "US Market";
+      document.getElementById("margin-date").innerText = "僅適用台股";
+      document.getElementById("val-date").innerText = "僅適用台股";
+      ["mg-buy", "mg-short", "mg-ratio", "mg-note", "val-per", "val-pbr", "val-yield", "rev-val", "rev-growth"].forEach(
+        (id) => (document.getElementById(id).innerText = "--")
+      );
+    }
+
+    function renderAiStrategyLink(target) {
+      const sentimentEl = document.getElementById("ai-link-sentiment");
+      const eventsEl = document.getElementById("ai-link-events");
+      const adviceEl = document.getElementById("ai-link-advice");
+
+      // 從最新的已載入報告中尋找對應市場與代號
+      const reportEntries = Object.entries(cachedReports).sort((a, b) => b[0].localeCompare(a[0]));
+      for (const [, report] of reportEntries) {
+        if (report.market !== target.market) continue;
+        const match = (report.stocks || []).find(
+          (s) => String(s.ticker).toUpperCase() === String(target.ticker).toUpperCase()
+        );
+        if (match) {
+          const sent = String(match.sentiment || "中性");
+          sentimentEl.innerText = `${report.date} ｜ ${sent}`;
+          sentimentEl.className = sent.includes("多")
+            ? "text-[11px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold"
+            : sent.includes("空")
+              ? "text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold"
+              : "text-[11px] px-2 py-0.5 rounded bg-slate-700 text-slate-300 font-bold";
+          eventsEl.innerText = `📰 ${match.key_events || "無重大新事件"}`;
+          adviceEl.innerText = `🎯 ${match.action_advice || ""}`;
+          return;
+        }
+      }
+
+      sentimentEl.innerText = "無對應報告";
+      sentimentEl.className = "text-[11px] px-2 py-0.5 rounded bg-slate-700 text-slate-400";
+      eventsEl.innerText = "尚未於最新盤前報告中找到此檔標的（可先加入持股並執行排程）。";
+      adviceEl.innerText = "";
+    }
+
+    // ==================== 分頁 3：持股清單管理 ====================
     async function loadPortfolio() {
       const tbody = document.getElementById("portfolio-tbody");
       tbody.innerHTML = "";
@@ -300,6 +1620,7 @@
             <td class="p-4 text-amber-300">${escapeHtml(s.avg_cost)}</td>
             <td class="p-4 text-slate-400">${escapeHtml(s.focus || "-")}</td>
             <td class="p-4 text-right space-x-3 whitespace-nowrap">
+              <button type="button" data-action="live" data-doc-id="${escapeHtml(id)}" class="text-emerald-400 hover:underline">看走勢</button>
               <button type="button" data-action="edit" data-doc-id="${escapeHtml(id)}" class="text-sky-400 hover:underline">編輯</button>
               <button type="button" data-action="delete" data-doc-id="${escapeHtml(id)}" class="text-rose-400 hover:underline">刪除</button>
             </td>
@@ -309,12 +1630,17 @@
       });
     }
 
-    // 採用事件委派與 data-doc-id，避免 focus/name 含有單引號或特殊字元時破壞 HTML 屬性
     document.getElementById("portfolio-tbody").addEventListener("click", (event) => {
       const btn = event.target.closest("button[data-action]");
       if (!btn) return;
       const docId = btn.dataset.docId;
-      if (btn.dataset.action === "edit") {
+      if (btn.dataset.action === "live") {
+        const item = cachedPortfolio[docId];
+        if (item) {
+          activeLiveTarget = { ...item };
+          switchTab("live");
+        }
+      } else if (btn.dataset.action === "edit") {
         editStock(docId);
       } else if (btn.dataset.action === "delete") {
         deleteStock(docId);
