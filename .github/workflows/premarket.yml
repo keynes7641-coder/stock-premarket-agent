@@ -1,0 +1,59 @@
+name: Premarket Stock Agent
+
+on:
+  schedule:
+    # 週一至週五 08:15 (台灣時間 UTC+8) -> 執行台股
+    - cron: '15 0 * * 1-5'
+    # 週一至週五 20:45 (台灣時間 UTC+8) -> 執行美股
+    - cron: '45 12 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      market:
+        description: '選擇市場 (TW 或 US)'
+        required: true
+        default: 'TW'
+        type: choice
+        options:
+          - TW
+          - US
+      force:
+        description: '是否忽略休市日強制執行 (true/false)'
+        required: true
+        default: 'true'
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Premarket Agent
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            MARKET="${{ github.event.inputs.market }}"
+            if [ "${{ github.event.inputs.force }}" == "true" ]; then
+              FORCE_FLAG="--force"
+            fi
+          elif [ "${{ github.event.schedule }}" == "15 0 * * 1-5" ]; then
+            MARKET="TW"
+          else
+            MARKET="US"
+          fi
+          python main.py --market "$MARKET" $FORCE_FLAG

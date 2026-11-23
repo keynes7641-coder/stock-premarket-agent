@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Secrets & local config
+.env
+*.local
+serviceAccountKey*.json
+*-firebase-adminsdk-*.json
+
+# OS / Editor / Local Agent Skills
+.DS_Store
+Thumbs.db
+.vscode/
+.agents/
+skills-lock.json

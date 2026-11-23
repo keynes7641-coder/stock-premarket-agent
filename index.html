@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 盤前投資情報站</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+  <!-- 登入區塊 -->
+  <div id="auth-section" class="flex items-center justify-center min-h-screen px-4">
+    <form id="login-form" class="bg-slate-800 p-8 rounded-xl shadow-lg w-full max-w-md border border-slate-700">
+      <h1 class="text-2xl font-bold mb-6 text-center text-sky-400">📈 盤前投資情報站</h1>
+      <input id="email" type="email" required placeholder="管理員 Email" autocomplete="email" class="w-full mb-3 px-4 py-2 rounded bg-slate-700 border border-slate-600 focus:outline-none focus:border-sky-500" />
+      <input id="password" type="password" required placeholder="密碼" autocomplete="current-password" class="w-full mb-5 px-4 py-2 rounded bg-slate-700 border border-slate-600 focus:outline-none focus:border-sky-500" />
+      <button type="submit" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-2 rounded transition">登入系統</button>
+      <p id="auth-error" class="text-rose-400 text-sm mt-3 text-center"></p>
+    </form>
+  </div>
+
+  <!-- 主系統介面 -->
+  <div id="app-section" class="hidden max-w-5xl mx-auto px-4 py-8">
+    <header class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8 border-b border-slate-700 pb-4">
+      <div>
+        <h1 class="text-2xl font-bold text-sky-400">📊 AI 盤前持股情報與管理</h1>
+        <p class="text-slate-400 text-sm mt-1">自動彙整隔夜總經、財報與籌碼動態</p>
+      </div>
+      <div class="flex gap-3">
+        <button type="button" id="tab-reports" class="px-4 py-2 rounded-lg bg-sky-600 font-medium transition">盤前報告</button>
+        <button type="button" id="tab-portfolio" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition">持股清單管理</button>
+        <button type="button" id="btn-logout" class="px-3 py-2 rounded-lg text-slate-400 hover:text-white text-sm transition">登出</button>
+      </div>
+    </header>
+
+    <!-- 分頁 1：盤前報告瀏覽 -->
+    <div id="view-reports">
+      <div class="flex flex-wrap items-center gap-3 mb-6">
+        <select id="report-select" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-slate-100 focus:outline-none focus:border-sky-500">
+          <option value="">載入報告清單中...</option>
+        </select>
+        <button type="button" id="btn-refresh-reports" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm transition">重新整理</button>
+      </div>
+
+      <div id="reports-empty" class="hidden bg-slate-800/60 border border-slate-700 rounded-xl p-8 text-center text-slate-400">
+        目前尚無盤前分析報告。請先於「持股清單管理」新增持股，並執行排程或手動觸發分析。
+      </div>
+
+      <div id="macro-card" class="bg-slate-800/80 border border-slate-700 rounded-xl p-6 mb-6 hidden">
+        <h2 class="text-lg font-bold text-amber-400 mb-2">🌐 大盤與費半隔夜總經摘要</h2>
+        <pre id="macro-content" class="whitespace-pre-wrap text-sm text-slate-300 font-sans leading-relaxed"></pre>
+      </div>
+
+      <div id="stocks-report-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+    </div>
+
+    <!-- 分頁 2：持股清單管理 -->
+    <div id="view-portfolio" class="hidden">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6">
+        <h2 class="text-lg font-bold text-emerald-400 mb-4">➕ 新增 / 更新持股</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <select id="p-market" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500">
+            <option value="TW">台股 (TW)</option>
+            <option value="US">美股 (US)</option>
+          </select>
+          <input id="p-ticker" type="text" placeholder="代號 (例: 2308 或 RKLB)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <input id="p-yf" type="text" placeholder="Yahoo代號 (例: 2308.TW / 3491.TWO / RKLB)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <input id="p-name" type="text" placeholder="股票名稱 (例: 台達電)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <input id="p-cost" type="number" step="0.01" placeholder="持有均價" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <input id="p-focus" type="text" placeholder="關注主軸 (例: AI電源、低軌衛星)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div class="mt-4 flex gap-3">
+          <button type="button" id="btn-save-stock" class="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-6 py-2 rounded-lg transition">儲存持股</button>
+          <button type="button" id="btn-reset-form" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium px-4 py-2 rounded-lg transition">清空表單</button>
+        </div>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead class="bg-slate-700/60 text-slate-300 text-sm">
+            <tr>
+              <th class="p-4">市場</th>
+              <th class="p-4">標的</th>
+              <th class="p-4">持有均價</th>
+              <th class="p-4">關注主軸</th>
+              <th class="p-4 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-tbody" class="divide-y divide-slate-700 text-sm"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCXATX7l7AkmfX-bswFO4d1N05kpA1dPMU",
+      authDomain: "stock-agent-54c72.firebaseapp.com",
+      projectId: "stock-agent-54c72",
+      storageBucket: "stock-agent-54c72.firebasestorage.app",
+      messagingSenderId: "567868236221",
+      appId: "1:567868236221:web:0bda4e41a591d06759b2d4",
+      measurementId: "G-2MZ0PKH95Q",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let cachedReports = {};
+    let cachedPortfolio = {};
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        document.getElementById("auth-section").classList.add("hidden");
+        document.getElementById("app-section").classList.remove("hidden");
+        loadReports();
+        loadPortfolio();
+      } else {
+        document.getElementById("auth-section").classList.remove("hidden");
+        document.getElementById("app-section").classList.add("hidden");
+      }
+    });
+
+    document.getElementById("login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const pw = document.getElementById("password").value;
+      const errEl = document.getElementById("auth-error");
+      errEl.innerText = "";
+      try {
+        await signInWithEmailAndPassword(auth, email, pw);
+      } catch (e) {
+        errEl.innerText = "登入失敗：" + e.message;
+      }
+    });
+
+    document.getElementById("btn-logout").addEventListener("click", () => signOut(auth));
+
+    function switchTab(tab) {
+      document.getElementById("view-reports").classList.toggle("hidden", tab !== "reports");
+      document.getElementById("view-portfolio").classList.toggle("hidden", tab !== "portfolio");
+      document.getElementById("tab-reports").className =
+        tab === "reports"
+          ? "px-4 py-2 rounded-lg bg-sky-600 font-medium transition"
+          : "px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition";
+      document.getElementById("tab-portfolio").className =
+        tab === "portfolio"
+          ? "px-4 py-2 rounded-lg bg-sky-600 font-medium transition"
+          : "px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition";
+    }
+
+    document.getElementById("tab-reports").addEventListener("click", () => switchTab("reports"));
+    document.getElementById("tab-portfolio").addEventListener("click", () => switchTab("portfolio"));
+    document.getElementById("report-select").addEventListener("change", renderSelectedReport);
+    document.getElementById("btn-refresh-reports").addEventListener("click", loadReports);
+    document.getElementById("btn-save-stock").addEventListener("click", saveStock);
+    document.getElementById("btn-reset-form").addEventListener("click", resetPortfolioForm);
+
+    async function loadReports() {
+      const select = document.getElementById("report-select");
+      const emptyEl = document.getElementById("reports-empty");
+      const macroCard = document.getElementById("macro-card");
+      const grid = document.getElementById("stocks-report-grid");
+
+      select.innerHTML = "<option value=''>載入報告清單中...</option>";
+      cachedReports = {};
+
+      try {
+        const q = query(collection(db, "reports"), orderBy("date", "desc"), limit(20));
+        const snap = await getDocs(q);
+        select.innerHTML = "";
+
+        if (snap.empty) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.innerText = "尚無分析報告";
+          select.appendChild(opt);
+          emptyEl.classList.remove("hidden");
+          macroCard.classList.add("hidden");
+          grid.innerHTML = "";
+          return;
+        }
+
+        emptyEl.classList.add("hidden");
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          cachedReports[docSnap.id] = data;
+          const opt = document.createElement("option");
+          opt.value = docSnap.id;
+          opt.innerText = `${data.date} 【${data.market === "TW" ? "台股" : "美股"}盤前報告】`;
+          select.appendChild(opt);
+        });
+        renderSelectedReport();
+      } catch (e) {
+        select.innerHTML = "<option value=''>報告載入失敗</option>";
+        emptyEl.classList.remove("hidden");
+        emptyEl.innerText = "無法載入報告：" + e.message;
+      }
+    }
+
+    function renderSelectedReport() {
+      const id = document.getElementById("report-select").value;
+      const report = cachedReports[id];
+      const macroCard = document.getElementById("macro-card");
+      const grid = document.getElementById("stocks-report-grid");
+
+      if (!report) {
+        macroCard.classList.add("hidden");
+        grid.innerHTML = "";
+        return;
+      }
+
+      macroCard.classList.remove("hidden");
+      document.getElementById("macro-content").innerText = report.macro_summary || "";
+
+      grid.innerHTML = "";
+      (report.stocks || []).forEach((s) => {
+        const sentiment = String(s.sentiment || "中性");
+        const badgeColor = sentiment.includes("多")
+          ? "bg-rose-500/20 text-rose-400 border-rose-500/40"
+          : sentiment.includes("空")
+            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+            : "bg-slate-600/40 text-slate-300 border-slate-500/40";
+
+        grid.insertAdjacentHTML(
+          "beforeend",
+          `
+          <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-start gap-2 mb-3">
+                <div>
+                  <h3 class="text-lg font-bold text-white">${escapeHtml(s.name)} <span class="text-sm text-slate-400">(${escapeHtml(s.ticker)})</span></h3>
+                  <p class="text-xs text-slate-400 mt-0.5">均價: ${escapeHtml(s.avg_cost)} | ${escapeHtml(s.price_status)}</p>
+                </div>
+                <span class="shrink-0 px-2.5 py-1 text-xs font-bold rounded border ${badgeColor}">${escapeHtml(sentiment)}</span>
+              </div>
+              <div class="text-sm text-slate-300 mb-3 bg-slate-900/50 p-3 rounded-lg">
+                <span class="text-sky-400 font-semibold">📰 24H 關鍵事件：</span>${escapeHtml(s.key_events)}
+              </div>
+            </div>
+            <div class="text-sm text-amber-200/90 border-t border-slate-700 pt-3">
+              <span class="font-semibold text-amber-400">🎯 操作建議：</span>${escapeHtml(s.action_advice)}
+            </div>
+          </div>
+          `
+        );
+      });
+    }
+
+    async function loadPortfolio() {
+      const tbody = document.getElementById("portfolio-tbody");
+      tbody.innerHTML = "";
+      cachedPortfolio = {};
+
+      const snap = await getDocs(collection(db, "portfolio"));
+      if (snap.empty) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="p-6 text-center text-slate-400">尚未新增任何持股資料。</td>
+          </tr>
+        `;
+        return;
+      }
+
+      const rows = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        cachedPortfolio[docSnap.id] = data;
+        rows.push({ id: docSnap.id, data });
+      });
+
+      rows.sort((a, b) => `${a.data.market}_${a.data.ticker}`.localeCompare(`${b.data.market}_${b.data.ticker}`));
+
+      rows.forEach(({ id, data: s }) => {
+        const marketBadge =
+          s.market === "TW"
+            ? "bg-indigo-500/30 text-indigo-300"
+            : "bg-cyan-500/30 text-cyan-300";
+
+        tbody.insertAdjacentHTML(
+          "beforeend",
+          `
+          <tr class="hover:bg-slate-700/30">
+            <td class="p-4"><span class="px-2 py-0.5 rounded text-xs font-bold ${marketBadge}">${escapeHtml(s.market)}</span></td>
+            <td class="p-4 font-semibold">${escapeHtml(s.name)} (${escapeHtml(s.ticker)})</td>
+            <td class="p-4 text-amber-300">${escapeHtml(s.avg_cost)}</td>
+            <td class="p-4 text-slate-400">${escapeHtml(s.focus || "-")}</td>
+            <td class="p-4 text-right space-x-3 whitespace-nowrap">
+              <button type="button" data-action="edit" data-doc-id="${escapeHtml(id)}" class="text-sky-400 hover:underline">編輯</button>
+              <button type="button" data-action="delete" data-doc-id="${escapeHtml(id)}" class="text-rose-400 hover:underline">刪除</button>
+            </td>
+          </tr>
+          `
+        );
+      });
+    }
+
+    // 採用事件委派與 data-doc-id，避免 focus/name 含有單引號或特殊字元時破壞 HTML 屬性
+    document.getElementById("portfolio-tbody").addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-action]");
+      if (!btn) return;
+      const docId = btn.dataset.docId;
+      if (btn.dataset.action === "edit") {
+        editStock(docId);
+      } else if (btn.dataset.action === "delete") {
+        deleteStock(docId);
+      }
+    });
+
+    async function saveStock() {
+      const market = document.getElementById("p-market").value;
+      const ticker = document.getElementById("p-ticker").value.trim().toUpperCase();
+      const yf_symbol = document.getElementById("p-yf").value.trim().toUpperCase();
+      const name = document.getElementById("p-name").value.trim();
+      const avg_cost = parseFloat(document.getElementById("p-cost").value);
+      const focus = document.getElementById("p-focus").value.trim();
+
+      if (!ticker || !yf_symbol || !name || Number.isNaN(avg_cost)) {
+        alert("請完整填寫代號、Yahoo代號、名稱與均價！");
+        return;
+      }
+
+      const docId = `${market}_${ticker}`;
+      await setDoc(doc(db, "portfolio", docId), {
+        market,
+        ticker,
+        yf_symbol,
+        name,
+        avg_cost,
+        focus,
+      });
+      alert("已儲存！");
+      resetPortfolioForm();
+      loadPortfolio();
+    }
+
+    function editStock(docId) {
+      const s = cachedPortfolio[docId];
+      if (!s) return;
+      document.getElementById("p-market").value = s.market || "TW";
+      document.getElementById("p-ticker").value = s.ticker || "";
+      document.getElementById("p-yf").value = s.yf_symbol || "";
+      document.getElementById("p-name").value = s.name || "";
+      document.getElementById("p-cost").value = s.avg_cost ?? "";
+      document.getElementById("p-focus").value = s.focus || "";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function resetPortfolioForm() {
+      document.getElementById("p-market").value = "TW";
+      document.getElementById("p-ticker").value = "";
+      document.getElementById("p-yf").value = "";
+      document.getElementById("p-name").value = "";
+      document.getElementById("p-cost").value = "";
+      document.getElementById("p-focus").value = "";
+    }
+
+    async function deleteStock(docId) {
+      if (confirm("確定要刪除此檔持股嗎？")) {
+        await deleteDoc(doc(db, "portfolio", docId));
+        loadPortfolio();
+      }
+    }
+  </script>
+</body>
+</html>

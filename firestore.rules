@@ -1,0 +1,153 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: portfolio
+// Document ID: {market}_{ticker} (e.g., TW_2308, US_RKLB)
+// Fields:
+//   - market: string (required, immutable, enum: 'TW' | 'US') - Market identifier
+//   - ticker: string (required, immutable, 1..15 chars, uppercase alphanumeric/.-) - Stock ticker
+//   - yf_symbol: string (required, 1..20 chars, valid Yahoo Finance symbol) - Yahoo Finance ticker
+//   - name: string (required, 1..100 chars) - Stock display name
+//   - avg_cost: number (required, 0..100000000) - Average holding cost
+//   - focus: string (optional, 0..200 chars) - Key investment thesis or catalyst focus
+//
+// Collection: reports
+// Document ID: {YYYY-MM-DD}_{market} (e.g., 2026-11-19_TW)
+// Access Pattern: Written exclusively by Python backend (main.py) via Firebase Admin SDK.
+//                 Client web app (index.html) has read-only access for authorized admin.
+// Fields:
+//   - date: string (YYYY-MM-DD, Asia/Taipei)
+//   - market: string ('TW' | 'US')
+//   - macro_summary: string
+//   - stocks: list of maps (ticker, name, avg_cost, sentiment, price_status, key_events, action_advice)
+//   - updated_at: timestamp
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user matches a specific UID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Restrict access strictly to the bootstrapped admin UID or server-assigned admin custom claim.
+    // This prevents unauthorized access even if someone registers a new account via public sign-up.
+    function isAdmin() {
+      return isOwner('wBEHwFAGi3TpY6C0BimjRgDTfe92') ||
+        (isAuthenticated() && request.auth.token.get('admin', false) == true);
+    }
+
+    // Verify UID hasn't been tampered with on create (if present)
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure UID field is not modified on update (if present)
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that the document contains only allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate string length bounds
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate optional string field (if present, must be string within bounds)
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+        (request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen);
+    }
+
+    // Validate that immutable fields have not changed on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Validate portfolio stock document schema, types, size limits, and ID consistency
+    function isValidPortfolioStock(stockId) {
+      let data = request.resource.data;
+      let allowedFields = ['market', 'ticker', 'yf_symbol', 'name', 'avg_cost', 'focus'];
+      let requiredFields = ['market', 'ticker', 'yf_symbol', 'name', 'avg_cost'];
+
+      return hasOnlyAllowedFields(allowedFields) &&
+        hasRequiredFields(requiredFields) &&
+        data.market in ['TW', 'US'] &&
+        validStringLength('ticker', 1, 15) &&
+        data.ticker.matches('^[A-Z0-9][A-Z0-9.-]{0,14}$') &&
+        stockId == data.market + '_' + data.ticker &&
+        validStringLength('yf_symbol', 1, 20) &&
+        (
+          (data.market == 'TW' && data.yf_symbol.matches('^[A-Z0-9-]+\\.TWO?$')) ||
+          (data.market == 'US' && data.yf_symbol.matches('^[A-Z0-9][A-Z0-9.-]{0,19}$'))
+        ) &&
+        validStringLength('name', 1, 100) &&
+        data.avg_cost is number &&
+        data.avg_cost >= 0 &&
+        data.avg_cost <= 100000000 &&
+        isValidOptionalString('focus', 0, 200);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Portfolio holdings: managed exclusively by authorized admin
+    match /portfolio/{stockId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && uidUnchanged() && isValidPortfolioStock(stockId);
+      allow update: if isAdmin() &&
+        uidNotModified() &&
+        isValidPortfolioStock(stockId) &&
+        areImmutableFieldsUnchanged(['market', 'ticker']);
+      allow delete: if isAdmin();
+    }
+
+    // Daily AI premarket reports: read-only for authorized admin.
+    // All writes are performed by the backend via Firebase Admin SDK.
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Default deny for all other collections and subcollections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
