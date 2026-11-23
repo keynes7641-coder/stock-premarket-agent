@@ -81,8 +81,15 @@
 
       <!-- 持股即時快覽 + 任意代號查詢 -->
       <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <h2 class="text-base font-bold text-sky-400">📌 持股即時報價快覽（點擊切換詳細走勢）</h2>
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="text-base font-bold text-sky-400">📌 持股即時報價快覽（點擊切換詳細走勢）</h2>
+            <select id="live-market-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-sky-500">
+              <option value="ALL">全部市場 (台+美)</option>
+              <option value="TW">僅顯示台股 (TW)</option>
+              <option value="US">僅顯示美股 (US)</option>
+            </select>
+          </div>
           <form id="live-search-form" class="flex items-center gap-2">
             <select id="live-search-market" class="bg-slate-700 border border-slate-600 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-sky-500">
               <option value="TW">台股</option>
@@ -378,6 +385,20 @@
       </div>
 
       <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-x-auto">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-700 bg-slate-800/90">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-bold text-slate-200">📋 目前持股清單</h3>
+            <span id="portfolio-count" class="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300">0 檔</span>
+          </div>
+          <div class="flex items-center gap-2 text-xs">
+            <label for="portfolio-market-filter" class="text-slate-400">顯示市場：</label>
+            <select id="portfolio-market-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-slate-100 focus:outline-none focus:border-emerald-500">
+              <option value="ALL">全部市場 (台+美)</option>
+              <option value="TW">僅顯示台股 (TW)</option>
+              <option value="US">僅顯示美股 (US)</option>
+            </select>
+          </div>
+        </div>
         <table class="w-full text-left border-collapse">
           <thead class="bg-slate-700/60 text-slate-300 text-sm">
             <tr>
@@ -536,6 +557,23 @@
     document.getElementById("btn-reset-form").addEventListener("click", resetPortfolioForm);
 
     document.getElementById("btn-refresh-live").addEventListener("click", () => refreshLiveView(true));
+    document.getElementById("live-market-filter").addEventListener("change", async (e) => {
+      const filterVal = e.target.value;
+      if (filterVal === "TW" || filterVal === "US") {
+        document.getElementById("live-search-market").value = filterVal;
+      }
+      await loadWatchlistQuotes();
+      const filteredEntries = getFilteredPortfolioEntries(filterVal);
+      if (
+        filteredEntries.length > 0 &&
+        (!activeLiveTarget || (filterVal !== "ALL" && activeLiveTarget.market !== filterVal))
+      ) {
+        activeLiveTarget = { ...filteredEntries[0][1] };
+        highlightWatchlistSelection();
+        loadLiveStockDetail(activeLiveTarget, true);
+      }
+    });
+    document.getElementById("portfolio-market-filter").addEventListener("change", renderPortfolioTable);
     document.getElementById("live-auto-refresh").addEventListener("change", (e) => {
       if (e.target.checked && currentTab === "live") {
         startLiveAutoRefresh();
@@ -761,12 +799,25 @@
       }
     }
 
+    function getFilteredPortfolioEntries(marketFilter = "ALL") {
+      return Object.entries(cachedPortfolio)
+        .filter(([, s]) => marketFilter === "ALL" || s.market === marketFilter)
+        .sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
     async function loadWatchlistQuotes() {
       const grid = document.getElementById("live-watchlist-grid");
-      const entries = Object.entries(cachedPortfolio).sort((a, b) => a[0].localeCompare(b[0]));
+      const filterVal = document.getElementById("live-market-filter").value;
+      const entries = getFilteredPortfolioEntries(filterVal);
+
+      if (Object.keys(cachedPortfolio).length === 0) {
+        grid.innerHTML = `<div class="col-span-full text-sm text-slate-400">尚未新增持股，可於上方查詢任意代號（預設顯示台積電 2330）。</div>`;
+        return;
+      }
 
       if (entries.length === 0) {
-        grid.innerHTML = `<div class="col-span-full text-sm text-slate-400">尚未新增持股，可於上方查詢任意代號（預設顯示台積電 2330）。</div>`;
+        const label = filterVal === "TW" ? "台股" : filterVal === "US" ? "美股" : "";
+        grid.innerHTML = `<div class="col-span-full text-sm text-slate-400">目前無${label}持股資料，可於「持股清單管理」新增或於上方查詢任意代號。</div>`;
         return;
       }
 
@@ -1582,12 +1633,26 @@
 
     // ==================== 分頁 3：持股清單管理 ====================
     async function loadPortfolio() {
-      const tbody = document.getElementById("portfolio-tbody");
-      tbody.innerHTML = "";
       cachedPortfolio = {};
-
       const snap = await getDocs(collection(db, "portfolio"));
-      if (snap.empty) {
+      snap.forEach((docSnap) => {
+        cachedPortfolio[docSnap.id] = docSnap.data();
+      });
+      renderPortfolioTable();
+    }
+
+    function renderPortfolioTable() {
+      const tbody = document.getElementById("portfolio-tbody");
+      const countEl = document.getElementById("portfolio-count");
+      const filterVal = document.getElementById("portfolio-market-filter").value;
+      tbody.innerHTML = "";
+
+      const allCount = Object.keys(cachedPortfolio).length;
+      const entries = getFilteredPortfolioEntries(filterVal);
+      countEl.innerText =
+        filterVal === "ALL" ? `${allCount} 檔` : `${entries.length} / ${allCount} 檔`;
+
+      if (allCount === 0) {
         tbody.innerHTML = `
           <tr>
             <td colspan="5" class="p-6 text-center text-slate-400">尚未新增任何持股資料。</td>
@@ -1596,16 +1661,17 @@
         return;
       }
 
-      const rows = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        cachedPortfolio[docSnap.id] = data;
-        rows.push({ id: docSnap.id, data });
-      });
+      if (entries.length === 0) {
+        const label = filterVal === "TW" ? "台股" : filterVal === "US" ? "美股" : "";
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="p-6 text-center text-slate-400">目前無${label}持股資料。</td>
+          </tr>
+        `;
+        return;
+      }
 
-      rows.sort((a, b) => `${a.data.market}_${a.data.ticker}`.localeCompare(`${b.data.market}_${b.data.ticker}`));
-
-      rows.forEach(({ id, data: s }) => {
+      entries.forEach(([id, s]) => {
         const marketBadge =
           s.market === "TW"
             ? "bg-indigo-500/30 text-indigo-300"
