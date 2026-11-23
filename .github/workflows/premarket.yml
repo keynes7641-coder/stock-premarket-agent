@@ -17,9 +17,13 @@ on:
           - TW
           - US
       force:
-        description: '是否忽略休市日強制執行 (true/false)'
+        description: '是否忽略休市日強制執行'
         required: true
-        default: 'true'
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
 
 jobs:
   run-agent:
@@ -45,14 +49,18 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MARKET: ${{ github.event.inputs.market }}
+          INPUT_FORCE: ${{ github.event.inputs.force }}
         run: |
           FORCE_FLAG=""
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            MARKET="${{ github.event.inputs.market }}"
-            if [ "${{ github.event.inputs.force }}" == "true" ]; then
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            MARKET="$INPUT_MARKET"
+            if [ "$INPUT_FORCE" == "true" ]; then
               FORCE_FLAG="--force"
             fi
-          elif [ "${{ github.event.schedule }}" == "15 0 * * 1-5" ]; then
+          elif [ "$EVENT_SCHEDULE" == "15 0 * * 1-5" ]; then
             MARKET="TW"
           else
             MARKET="US"
