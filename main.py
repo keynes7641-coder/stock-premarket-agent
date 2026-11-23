@@ -4,8 +4,10 @@ import json
 import os
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 import exchange_calendars as xcals
 import firebase_admin
@@ -66,6 +68,32 @@ def is_market_open(market: str) -> bool:
     return is_open
 
 
+def _generate_with_retry(
+    client: genai.Client,
+    model: str,
+    contents: str,
+    config: types.GenerateContentConfig,
+    retries: int = 3,
+) -> Any:
+    """針對暫時性 503/500 尖峰錯誤進行退避重試。"""
+    for attempt in range(retries):
+        try:
+            return client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+        except Exception as exc:
+            err_msg = str(exc)
+            is_transient = "503" in err_msg or "UNAVAILABLE" in err_msg or "500" in err_msg
+            if is_transient and attempt < retries - 1:
+                wait_sec = 5 * (attempt + 1)
+                print(f"[提示] {model} 暫時繁忙 (503/500)，{wait_sec} 秒後重試 ({attempt + 1}/{retries})...")
+                time.sleep(wait_sec)
+                continue
+            raise
+
+
 def get_macro_summary(client: genai.Client, market: str) -> str:
     """抓取大盤、費半、台積電ADR、VIX 與美債殖利率走勢，並生成總經風向摘要。"""
     indices = {
@@ -100,7 +128,8 @@ def get_macro_summary(client: genai.Client, market: str) -> str:
     要求：點出半導體/科技股氣氛、美債殖利率或 VIX 是否帶來估值壓力，以及今日操作該偏積極或保守控管倉位。
     """
     try:
-        res = client.models.generate_content(
+        res = _generate_with_retry(
+            client,
             model=FLASH_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.2),
@@ -207,6 +236,32 @@ def get_us_finnhub_news(ticker: str) -> str:
     return "近兩日無 API 新聞記錄"
 
 
+def get_google_news_rss(stock_name: str, ticker: str, market: str, max_items: int = 5) -> str:
+    """透過免費 Google News RSS 抓取近兩日相關新聞標題（不消耗 Gemini Grounding 配額）。"""
+    if market == "TW":
+        q = f"{stock_name} {ticker} when:2d"
+        url = f"https://news.google.com/rss/search?q={quote(q)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+    else:
+        q = f"{ticker} stock OR {stock_name} when:2d"
+        url = f"https://news.google.com/rss/search?q={quote(q)}&hl=en-US&gl=US&ceid=US:en"
+
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if not resp.ok:
+            return "暫無 RSS 新聞"
+        root = ET.fromstring(resp.text)
+        items = root.findall(".//item")[:max_items]
+        lines = []
+        for item in items:
+            title = (item.findtext("title") or "").strip()
+            pub_date = (item.findtext("pubDate") or "").strip()
+            if title:
+                lines.append(f"- {title}" + (f" [{pub_date}]" if pub_date else ""))
+        return "\n".join(lines) if lines else "近兩日無重大相關新聞"
+    except Exception:
+        return "暫無 RSS 新聞"
+
+
 def _parse_json_response(raw_text: str) -> dict[str, Any]:
     """容錯解析 Gemini 回傳的 JSON 字串，去除多餘的 Markdown 標記。"""
     cleaned = (raw_text or "").strip()
@@ -236,23 +291,26 @@ def analyze_stock(
     stock: dict[str, Any],
     macro_context: str,
 ) -> dict[str, Any]:
-    """使用 Gemini 2.5 Pro + Google Search Grounding 分析單一持股，並包含錯誤與 JSON 解析容錯。"""
+    """分析單一持股：優先嘗試 Search Grounding，若免費配額受限則自動以 RSS/籌碼數據降級完成分析。"""
     price_info = get_price_summary(stock["yf_symbol"])
     extra_data = (
         get_tw_finmind_data(stock["ticker"])
         if market == "TW"
         else get_us_finnhub_news(stock["ticker"])
     )
+    rss_news = get_google_news_rss(stock["name"], stock["ticker"], market)
 
     today_str = datetime.now(pytz.timezone("Asia/Taipei")).strftime("%Y-%m-%d")
     prompt = f"""
-    今天是 {today_str}。你是買方證券分析師，請檢索「{stock['name']} ({stock['ticker']})」過去 24 小時最新新聞或財報，並結合大盤總經環境進行盤前分析：
+    今天是 {today_str}。你是買方證券分析師，請綜合以下過去 24~48 小時新聞、籌碼、技術面與大盤總經環境，為「{stock['name']} ({stock['ticker']})」提供盤前分析：
 
     - 大盤總經背景：{macro_context}
     - 標的：{stock['name']} ({stock['ticker']}) | 持有均價：{stock['avg_cost']}
     - 關注主軸：{stock.get('focus', '基本面與重大訂單動態')}
     - 價量技術面：{price_info}
-    - 籌碼/新聞摘要：{extra_data}
+    - 籌碼/API新聞摘要：{extra_data}
+    - 近期即時新聞標題 (Google News RSS)：
+    {rss_news}
 
     請嚴格輸出 JSON 格式，包含以下欄位（不要加 Markdown 標記）：
     {{
@@ -263,37 +321,54 @@ def analyze_stock(
     }}
     """
 
-    candidate_models = list(dict.fromkeys([PRO_MODEL, FLASH_MODEL]))
-    last_err: Exception | None = None
+    # 嘗試順序：1) FLASH + Google Search Grounding -> 2) FLASH 純數據/RSS JSON 模式（零 Grounding 配額消耗）
+    # 若使用者有自訂或開通付費 PRO_MODEL，也會先嘗試 PRO_MODEL + Grounding
+    attempts: list[tuple[str, bool]] = []
+    if PRO_MODEL != FLASH_MODEL:
+        attempts.append((PRO_MODEL, True))
+    attempts.append((FLASH_MODEL, True))
+    attempts.append((FLASH_MODEL, False))
+    if FLASH_MODEL != "gemini-flash-latest":
+        attempts.append(("gemini-flash-latest", False))
 
-    for model_name in candidate_models:
+    last_err: Exception | None = None
+    for model_name, use_search in attempts:
+        mode_label = "Grounding" if use_search else "RSS/純數據模式"
         try:
+            config_kwargs: dict[str, Any] = {
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            }
+            if use_search:
+                config_kwargs["tools"] = [{"google_search": {}}]
+
             try:
-                response = client.models.generate_content(
+                response = _generate_with_retry(
+                    client,
                     model=model_name,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        tools=[{"google_search": {}}],
-                        temperature=0.2,
-                        response_mime_type="application/json",
-                    ),
+                    config=types.GenerateContentConfig(**config_kwargs),
                 )
             except Exception as first_err:
                 err_msg = str(first_err)
-                # 若模型不存在或配額用盡，直接換下一個備援模型，不必對同一模型重試
-                if "404" in err_msg or "429" in err_msg or "NOT_FOUND" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                if any(k in err_msg for k in ("404", "429", "NOT_FOUND", "RESOURCE_EXHAUSTED")):
                     raise
-                print(f"[提示] {stock['ticker']} ({model_name}) 切換相容模式重試 ({first_err})")
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        tools=[{"google_search": {}}],
-                        temperature=0.2,
-                    ),
-                )
+                if use_search:
+                    print(f"[提示] {stock['ticker']} ({model_name}) 切換純文字 JSON 提示重試")
+                    response = _generate_with_retry(
+                        client,
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            tools=[{"google_search": {}}],
+                            temperature=0.2,
+                        ),
+                    )
+                else:
+                    raise
 
             parsed = _parse_json_response(response.text or "")
+            print(f"[成功] {stock['name']} ({stock['ticker']}) 使用 {model_name} ({mode_label}) 分析完成")
             return {
                 "ticker": stock["ticker"],
                 "name": stock["name"],
@@ -307,9 +382,18 @@ def analyze_stock(
             }
         except Exception as exc:
             last_err = exc
-            print(f"[警告] {stock['name']} ({stock['ticker']}) 使用 {model_name} 分析失敗: {exc}")
+            print(f"[警告] {stock['name']} ({stock['ticker']}) 使用 {model_name} ({mode_label}) 失敗: {exc}")
 
-    print(f"[錯誤] 分析 {stock['name']} ({stock['ticker']}) 所有模型皆失敗: {last_err}")
+    print(f"[錯誤] 分析 {stock['name']} ({stock['ticker']}) 所有模式皆失敗: {last_err}")
+    try:
+        avail = [
+            m.name
+            for m in client.models.list()
+            if "generateContent" in (getattr(m, "supported_actions", None) or [])
+        ]
+        print(f"[診斷] 目前 API Key 可用模型清單: {', '.join(avail[:20])}")
+    except Exception:
+        pass
     return {
         "ticker": stock["ticker"],
         "name": stock["name"],
