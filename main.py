@@ -14,6 +14,7 @@ import requests
 import yfinance as yf
 from firebase_admin import credentials, firestore
 from google import genai
+from google.cloud.firestore_v1.base_query import FieldFilter
 from google.genai import types
 
 try:
@@ -22,6 +23,9 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+FLASH_MODEL = os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.8-flash")
+PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")
 
 
 def init_services() -> tuple[Any, genai.Client]:
@@ -97,7 +101,7 @@ def get_macro_summary(client: genai.Client, market: str) -> str:
     """
     try:
         res = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=FLASH_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.2),
         )
@@ -259,52 +263,62 @@ def analyze_stock(
     }}
     """
 
-    try:
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-pro",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    tools=[{"google_search": {}}],
-                    temperature=0.2,
-                    response_mime_type="application/json",
-                ),
-            )
-        except Exception as first_err:
-            # 若端點不支援同時開啟 Google Search Grounding 與 application/json，降級為純文字 JSON 提示重試
-            print(f"[提示] {stock['ticker']} 切換相容模式重試 ({first_err})")
-            response = client.models.generate_content(
-                model="gemini-2.5-pro",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    tools=[{"google_search": {}}],
-                    temperature=0.2,
-                ),
-            )
+    candidate_models = list(dict.fromkeys([PRO_MODEL, FLASH_MODEL]))
+    last_err: Exception | None = None
 
-        parsed = _parse_json_response(response.text or "")
-        return {
-            "ticker": stock["ticker"],
-            "name": stock["name"],
-            "avg_cost": stock["avg_cost"],
-            "sentiment": str(parsed.get("sentiment") or "中性").strip(),
-            "price_status": str(parsed.get("price_status") or price_info).strip(),
-            "key_events": str(parsed.get("key_events") or "無重大新事件").strip(),
-            "action_advice": str(
-                parsed.get("action_advice") or "暫無具體建議，請留意盤中量價變化。"
-            ).strip(),
-        }
-    except Exception as exc:
-        print(f"[錯誤] 分析 {stock['name']} ({stock['ticker']}) 失敗: {exc}")
-        return {
-            "ticker": stock["ticker"],
-            "name": stock["name"],
-            "avg_cost": stock["avg_cost"],
-            "sentiment": "中性",
-            "price_status": price_info,
-            "key_events": "AI 分析超時或解析異常，請稍後重試或手動檢視新聞。",
-            "action_advice": "本檔標的本次分析失敗，建議開盤先觀望並留意關鍵支撐壓力位。",
-        }
+    for model_name in candidate_models:
+        try:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[{"google_search": {}}],
+                        temperature=0.2,
+                        response_mime_type="application/json",
+                    ),
+                )
+            except Exception as first_err:
+                err_msg = str(first_err)
+                # 若模型不存在或配額用盡，直接換下一個備援模型，不必對同一模型重試
+                if "404" in err_msg or "429" in err_msg or "NOT_FOUND" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                    raise
+                print(f"[提示] {stock['ticker']} ({model_name}) 切換相容模式重試 ({first_err})")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[{"google_search": {}}],
+                        temperature=0.2,
+                    ),
+                )
+
+            parsed = _parse_json_response(response.text or "")
+            return {
+                "ticker": stock["ticker"],
+                "name": stock["name"],
+                "avg_cost": stock["avg_cost"],
+                "sentiment": str(parsed.get("sentiment") or "中性").strip(),
+                "price_status": str(parsed.get("price_status") or price_info).strip(),
+                "key_events": str(parsed.get("key_events") or "無重大新事件").strip(),
+                "action_advice": str(
+                    parsed.get("action_advice") or "暫無具體建議，請留意盤中量價變化。"
+                ).strip(),
+            }
+        except Exception as exc:
+            last_err = exc
+            print(f"[警告] {stock['name']} ({stock['ticker']}) 使用 {model_name} 分析失敗: {exc}")
+
+    print(f"[錯誤] 分析 {stock['name']} ({stock['ticker']}) 所有模型皆失敗: {last_err}")
+    return {
+        "ticker": stock["ticker"],
+        "name": stock["name"],
+        "avg_cost": stock["avg_cost"],
+        "sentiment": "中性",
+        "price_status": price_info,
+        "key_events": "AI 分析超時或解析異常，請稍後重試或手動檢視新聞。",
+        "action_advice": "本檔標的本次分析失敗，建議開盤先觀望並留意關鍵支撐壓力位。",
+    }
 
 
 def send_telegram_notification(
@@ -368,7 +382,11 @@ def main() -> None:
 
     db, client = init_services()
 
-    docs = db.collection("portfolio").where("market", "==", args.market).stream()
+    docs = (
+        db.collection("portfolio")
+        .where(filter=FieldFilter("market", "==", args.market))
+        .stream()
+    )
     portfolio = [doc.to_dict() for doc in docs]
     if not portfolio:
         print(f"Firestore 中無 {args.market} 持股資料，結束執行。")
@@ -403,3 +421,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+main()
