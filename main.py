@@ -27,7 +27,7 @@ except ImportError:
     pass
 
 FLASH_MODEL = os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.8-flash")
-PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")
+PRO_MODEL = os.environ.get("GEMINI_PRO_MODEL", FLASH_MODEL)
 
 
 def init_services() -> tuple[Any, genai.Client]:
@@ -49,7 +49,10 @@ def init_services() -> tuple[Any, genai.Client]:
         firebase_admin.initialize_app(cred)
 
     db = firestore.client()
-    client = genai.Client(api_key=gemini_key)
+    client = genai.Client(
+        api_key=gemini_key,
+        http_options=types.HttpOptions(timeout=30000),
+    )
     return db, client
 
 
@@ -73,9 +76,9 @@ def _generate_with_retry(
     model: str,
     contents: str,
     config: types.GenerateContentConfig,
-    retries: int = 3,
+    retries: int = 2,
 ) -> Any:
-    """針對暫時性 503/500 尖峰錯誤進行退避重試。"""
+    """針對暫時性 503/500 尖峰錯誤進行短暫退避重試。"""
     for attempt in range(retries):
         try:
             return client.models.generate_content(
@@ -87,7 +90,7 @@ def _generate_with_retry(
             err_msg = str(exc)
             is_transient = "503" in err_msg or "UNAVAILABLE" in err_msg or "500" in err_msg
             if is_transient and attempt < retries - 1:
-                wait_sec = 5 * (attempt + 1)
+                wait_sec = 3
                 print(f"[提示] {model} 暫時繁忙 (503/500)，{wait_sec} 秒後重試 ({attempt + 1}/{retries})...")
                 time.sleep(wait_sec)
                 continue
