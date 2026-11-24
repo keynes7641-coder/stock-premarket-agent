@@ -416,19 +416,21 @@
 
         <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/80 text-xs">
           <select id="events-market-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-slate-100 focus:outline-none focus:border-sky-500">
-            <option value="ALL">全部市場 (台+美)</option>
+            <option value="ALL">全部市場 (台+美+聯準會)</option>
             <option value="TW">僅台股 (TW)</option>
-            <option value="US">僅美股 (US)</option>
+            <option value="US">美股 + 聯準會 (US)</option>
+            <option value="MACRO">僅美國聯準會 (FOMC)</option>
           </select>
           <select id="events-type-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-slate-100 focus:outline-none focus:border-sky-500">
             <option value="ALL">全部事件類型</option>
+            <option value="fomc">🏛️ 聯準會 FOMC</option>
             <option value="conference">🎤 法說會</option>
             <option value="earnings">📊 財報發表</option>
             <option value="dividend">💰 股息股利</option>
             <option value="other">📌 其他事件</option>
           </select>
           <select id="events-stock-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-slate-100 focus:outline-none focus:border-sky-500">
-            <option value="ALL">全部持股標的</option>
+            <option value="ALL">全部標的（含聯準會）</option>
           </select>
           <div id="events-stats-summary" class="ml-auto flex flex-wrap gap-2 text-[11px] text-slate-300"></div>
         </div>
@@ -437,7 +439,7 @@
       <!-- 手動新增事件表單（預設收合） -->
       <div id="manual-event-form-card" class="hidden bg-slate-800 border border-emerald-500/40 rounded-xl p-5">
         <div class="flex justify-between items-center mb-3">
-          <h3 class="text-sm font-bold text-emerald-400">➕ 手動記錄重大事件（法說會 / 財報 / 股息）</h3>
+          <h3 class="text-sm font-bold text-emerald-400">➕ 手動記錄重大事件（法說會 / 財報 / 股息 / 聯準會）</h3>
           <button type="button" id="btn-close-manual-event" class="text-xs text-slate-400 hover:text-white">收合 ✕</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
@@ -448,6 +450,7 @@
             <option value="conference">🎤 法說會 (conference)</option>
             <option value="earnings">📊 財報發表 (earnings)</option>
             <option value="dividend">💰 股息股利 (dividend)</option>
+            <option value="fomc">🏛️ 聯準會 FOMC (fomc)</option>
             <option value="other">📌 其他重大事件 (other)</option>
           </select>
           <input id="ev-date" type="date" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
@@ -469,6 +472,7 @@
             <button type="button" id="btn-cal-today" class="px-2.5 py-1 rounded bg-slate-700/70 hover:bg-slate-600 text-xs text-sky-300">本月</button>
           </div>
           <div class="flex flex-wrap gap-3 text-[11px] text-slate-300">
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span>聯準會 FOMC</span>
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block"></span>法說會</span>
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span>財報</span>
             <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>股息股利</span>
@@ -488,7 +492,7 @@
           <div id="events-upcoming-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
         </div>
         <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-          <h3 class="text-base font-bold text-sky-400 mb-3">📜 過去三個月已發生（點擊檢視財報 / 法說會 AI 深度分析）</h3>
+          <h3 class="text-base font-bold text-sky-400 mb-3">📜 過去三個月已發生（點擊檢視財報 / 法說會 / 聯準會深度分析）</h3>
           <div id="events-past-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
         </div>
       </div>
@@ -511,6 +515,12 @@
             <button type="button" id="btn-ev-modal-delete" class="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold transition">刪除</button>
             <button type="button" id="btn-ev-modal-close" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-bold transition">✕</button>
           </div>
+        </div>
+
+        <!-- 美國聯準會 FOMC 利率決議摘要卡（僅 fomc 事件顯示） -->
+        <div id="ev-modal-fomc-section" class="hidden bg-slate-900/60 border border-rose-500/35 rounded-xl p-4">
+          <h4 class="text-sm font-bold text-rose-400 mb-3">🏛️ 美國聯準會 FOMC 會議與利率決策資訊</h4>
+          <div id="ev-modal-fomc-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs"></div>
         </div>
 
         <!-- 股息股利詳情卡（僅 dividend 事件顯示） -->
@@ -2177,8 +2187,9 @@
       });
     }
 
-    // ==================== 分頁 4：重大事件行事曆 & 即時財報/法說分析 ====================
+    // ==================== 分頁 4：重大事件行事曆 & 即時財報/法說/聯準會分析 ====================
     const EVENT_TYPE_META = {
+      fomc: { label: "聯準會 FOMC", icon: "🏛️", pill: "bg-rose-500/25 text-rose-200 border-rose-400/50" },
       conference: { label: "法說會", icon: "🎤", pill: "bg-purple-500/25 text-purple-200 border-purple-400/40" },
       earnings: { label: "財報", icon: "📊", pill: "bg-sky-500/25 text-sky-200 border-sky-400/40" },
       dividend: { label: "股息股利", icon: "💰", pill: "bg-amber-500/25 text-amber-200 border-amber-400/40" },
@@ -2221,8 +2232,8 @@
 
       const entries = Object.entries(cachedPortfolio).sort((a, b) => a[0].localeCompare(b[0]));
 
-      filterSel.innerHTML = `<option value="ALL">全部持股標的</option>`;
-      manualSel.innerHTML = `<option value="">選擇已儲存持股...</option>`;
+      filterSel.innerHTML = `<option value="ALL">全部標的（含聯準會）</option><option value="MACRO_FOMC">[總經] 🏛️ 美國聯準會 (FOMC)</option>`;
+      manualSel.innerHTML = `<option value="">選擇已儲存持股或聯準會...</option><option value="MACRO_FOMC">[總經] 🏛️ 美國聯準會 (FOMC)</option>`;
 
       entries.forEach(([docId, s]) => {
         const label = `[${s.market}] ${s.name} (${s.ticker})`;
@@ -2249,7 +2260,9 @@
       // 僅顯示過去 95 天 ～ 未來 95 天內事件
       return Object.entries(cachedEvents)
         .filter(([, ev]) => {
-          if (marketFilter !== "ALL" && ev.market !== marketFilter) return false;
+          if (marketFilter === "TW" && ev.market !== "TW") return false;
+          if (marketFilter === "US" && ev.market !== "US" && ev.market !== "MACRO") return false;
+          if (marketFilter === "MACRO" && ev.market !== "MACRO") return false;
           if (typeFilter !== "ALL" && ev.event_type !== typeFilter) return false;
           if (stockFilter !== "ALL" && `${ev.market}_${ev.ticker}` !== stockFilter) return false;
           const d = diffDaysFromToday(ev.event_date);
@@ -2320,9 +2333,10 @@
         const pillsHtml = dayEvents
           .map(({ id, ev }) => {
             const meta = EVENT_TYPE_META[ev.event_type] || EVENT_TYPE_META.other;
+            const shortText = ev.event_type === "fomc" ? "聯準會 FOMC" : `${ev.ticker} ${meta.label}`;
             return `
               <button type="button" data-event-id="${escapeHtml(id)}" class="w-full text-left px-1.5 py-0.5 rounded border text-[10px] leading-tight truncate hover:brightness-125 transition ${meta.pill}" title="${escapeHtml(ev.name + ' - ' + ev.title)}">
-                ${meta.icon} ${escapeHtml(ev.ticker)} ${escapeHtml(meta.label)}
+                ${meta.icon} ${escapeHtml(shortText)}
               </button>
             `;
           })
@@ -2361,6 +2375,17 @@
           ? ev.ai_analysis?.preview_focus || ev.summary || "點擊查看事前觀察重點"
           : ev.ai_analysis?.highlights || ev.summary || "點擊檢視財報／法說會深度解析";
 
+        const ctaLabel =
+          ev.event_type === "fomc"
+            ? isUpcoming
+              ? "👉 點擊檢視 FOMC 會前情境與總經／產業影響預測"
+              : "👉 點擊檢視利率決議、總體經濟與各產業影響深度分析"
+            : !isUpcoming && ev.event_type === "earnings"
+              ? "👉 點擊即時瀏覽財報與 AI 深度分析"
+              : !isUpcoming && ev.event_type === "conference"
+                ? "👉 點擊檢視法說會重點與未來營運解析"
+                : "👉 點擊查看詳細內容";
+
         return `
           <button type="button" data-event-id="${escapeHtml(id)}" class="text-left bg-slate-900/65 hover:bg-slate-900 border border-slate-700 hover:border-sky-400/60 rounded-xl p-4 transition flex flex-col justify-between gap-2">
             <div>
@@ -2374,9 +2399,7 @@
               <h4 class="text-sm font-bold text-white">${escapeHtml(ev.name)} (${escapeHtml(ev.ticker)}) — ${escapeHtml(ev.title)}</h4>
               <p class="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">${escapeHtml(preview)}</p>
             </div>
-            <div class="text-[11px] text-sky-400 font-medium pt-1">
-              ${!isUpcoming && ev.event_type === "earnings" ? "👉 點擊即時瀏覽財報與 AI 深度分析" : !isUpcoming && ev.event_type === "conference" ? "👉 點擊檢視法說會重點與未來營運解析" : "👉 點擊查看詳細內容"}
-            </div>
+            <div class="text-[11px] text-sky-400 font-medium pt-1">${ctaLabel}</div>
           </button>
         `;
       };
@@ -2419,9 +2442,9 @@
         verdictBadge.classList.remove("hidden");
         verdictBadge.innerText = verdict;
         verdictBadge.className =
-          verdict.includes("多") || verdict.includes("優於") || verdict.includes("吸引")
+          verdict.includes("多") || verdict.includes("優於") || verdict.includes("吸引") || verdict.includes("鴿")
             ? "px-2.5 py-0.5 rounded text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40"
-            : verdict.includes("保守") || verdict.includes("低於")
+            : verdict.includes("保守") || verdict.includes("低於") || verdict.includes("鷹") || verdict.includes("壓")
               ? "px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
               : "px-2.5 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40";
       } else {
@@ -2430,6 +2453,21 @@
 
       document.getElementById("ev-modal-title").innerText = `${ev.name} (${ev.ticker}) — ${ev.title}`;
       document.getElementById("ev-modal-subtitle").innerText = `市場：${ev.market} ｜ 日期：${ev.event_date} ｜ 來源：${ev.source === "manual" ? "手動新增" : "系統自動追蹤"}`;
+
+      // 0. 美國聯準會 FOMC 利率決議摘要卡
+      const fomcSec = document.getElementById("ev-modal-fomc-section");
+      if (ev.event_type === "fomc") {
+        fomcSec.classList.remove("hidden");
+        const det = ev.details || {};
+        document.getElementById("ev-modal-fomc-grid").innerHTML = `
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">美東會議日期</div><div class="text-xs font-bold text-white mt-1">${escapeHtml(det.meeting_range || ev.event_date)}</div></div>
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">台灣決議公布時間</div><div class="text-xs font-bold text-sky-300 mt-1">${escapeHtml(det.tw_release_time || "依聯準會公告")}</div></div>
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">${isUpcoming ? "市場利率預期" : "實際利率調整"}</div><div class="text-xs font-bold text-rose-300 mt-1">${escapeHtml(det.rate_action || "--")}</div></div>
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">聯邦基金利率區間</div><div class="text-xs font-bold text-amber-300 mt-1">${escapeHtml(det.target_rate_range || "--")}${det.has_sep ? " (含SEP)" : ""}</div></div>
+        `;
+      } else {
+        fomcSec.classList.add("hidden");
+      }
 
       // 1. 股息股利區
       const divSec = document.getElementById("ev-modal-dividend-section");
@@ -2473,7 +2511,28 @@
       const ai = ev.ai_analysis || {};
       const blocks = [];
 
-      if (isUpcoming) {
+      if (ev.event_type === "fomc") {
+        blocks.push({
+          title: isUpcoming ? "🔭 會前市場預期與關鍵觀察指標" : "🏛️ 會議決議與利率調整重點",
+          color: "border-rose-500/50 text-rose-300",
+          body: (isUpcoming ? ai.preview_focus : ai.highlights) || ev.summary || "尚未生成聯準會分析，請執行 events 同步。",
+        });
+        blocks.push({
+          title: "🌐 對總體經濟之總體影響（通膨 / 美債殖利率 / 美元 / 估值）",
+          color: "border-sky-500/50 text-sky-300",
+          body: ai.macro_impact || "（執行 events 同步後將自動生成總體經濟影響分析）",
+        });
+        blocks.push({
+          title: "🏭 對主要產業面影響解析（半導體AI / 金融 / 高股息 / 利率敏感族群）",
+          color: "border-purple-500/50 text-purple-300",
+          body: ai.sector_impact || "（執行 events 同步後將自動生成產業面輪動解析）",
+        });
+        blocks.push({
+          title: "🎯 針對您現有台美股持股之操作啟示",
+          color: "border-amber-500/50 text-amber-300",
+          body: ai.extra_insights || "（尚無補充建議）",
+        });
+      } else if (isUpcoming) {
         blocks.push({
           title: "🔭 AI 事前觀察重點",
           color: "border-emerald-500/40 text-emerald-300",
@@ -2716,9 +2775,12 @@
       const title = document.getElementById("ev-title").value.trim();
       const summary = document.getElementById("ev-summary").value.trim();
 
-      const stock = cachedPortfolio[stockKey];
+      const stock =
+        stockKey === "MACRO_FOMC"
+          ? { market: "MACRO", ticker: "FOMC", name: "美國聯準會 (Fed)" }
+          : cachedPortfolio[stockKey];
       if (!stock || !event_date || !title) {
-        alert("請選擇持股、日期並填寫事件標題！");
+        alert("請選擇標的、日期並填寫事件標題！");
         return;
       }
 

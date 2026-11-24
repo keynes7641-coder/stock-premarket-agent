@@ -1114,6 +1114,23 @@ def run_events_sync(
         existing_docs[doc.id] = doc.to_dict()
 
     saved_count = 0
+
+    # 先同步美國聯準會 FOMC 利率決策會議（過去 90 天 ～ 未來 90 天）
+    saved_count += _sync_fomc_events(
+        db=db,
+        client=client,
+        portfolio=portfolio,
+        today_date=today_date,
+        start_date=start_date,
+        end_date=end_date,
+        existing_docs=existing_docs,
+        force_refresh=force_refresh,
+        fallback_models=fallback_models,
+        exhausted_models=exhausted_models,
+        generate_with_retry=generate_with_retry,
+        parse_json_response=parse_json_response,
+    )
+
     for stock in portfolio:
         market = stock["market"]
         ticker = stock["ticker"]
@@ -1199,3 +1216,274 @@ def run_events_sync(
 
     print(f"重大事件行事曆同步完成，共更新 {saved_count} 筆事件！")
     return saved_count
+
+
+# =====================================================================
+# 模組三：美國聯準會 FOMC 會議行事曆與總經／產業深度解析
+# =====================================================================
+
+# 官方 Federal Reserve 2026–2027 FOMC 會議排程
+# 格式：(開始日, 決議公布日(美東), 是否含 SEP 利率點陣圖, 台灣公布時間說明)
+FOMC_OFFICIAL_SCHEDULE: list[tuple[str, str, bool, str]] = [
+    ("2026-01-27", "2026-01-28", False, "台灣時間 2026-01-29 03:00"),
+    ("2026-03-17", "2026-03-18", True, "台灣時間 2026-03-19 02:00"),
+    ("2026-04-28", "2026-04-29", False, "台灣時間 2026-04-30 02:00"),
+    ("2026-06-16", "2026-06-17", True, "台灣時間 2026-06-18 02:00"),
+    ("2026-07-28", "2026-07-29", False, "台灣時間 2026-07-30 02:00"),
+    ("2026-09-15", "2026-09-16", True, "台灣時間 2026-09-17 02:00"),
+    ("2026-10-27", "2026-10-28", False, "台灣時間 2026-10-29 02:00"),
+    ("2026-12-08", "2026-12-09", True, "台灣時間 2026-12-10 03:00"),
+    ("2027-01-26", "2027-01-27", False, "台灣時間 2027-01-28 03:00"),
+    ("2027-03-16", "2027-03-17", True, "台灣時間 2027-03-18 02:00"),
+    ("2027-04-27", "2027-04-28", False, "台灣時間 2027-04-29 02:00"),
+    ("2027-06-08", "2027-06-09", True, "台灣時間 2027-06-10 02:00"),
+    ("2027-07-27", "2027-07-28", False, "台灣時間 2027-07-29 02:00"),
+    ("2027-09-14", "2027-09-15", True, "台灣時間 2027-09-16 02:00"),
+    ("2027-11-16", "2027-11-17", False, "台灣時間 2027-11-18 03:00"),
+]
+
+
+def _get_macro_rates_snapshot() -> str:
+    """抓取當前美債殖利率、美元指數、費半與標普做為 FOMC 分析背景數據。"""
+    symbols = {
+        "^TNX": "美國10年期公債殖利率",
+        "^IRX": "美國13週國庫券利率",
+        "DX-Y.NYB": "美元指數 DXY",
+        "^GSPC": "標普500",
+        "^SOX": "費城半導體",
+        "^VIX": "VIX恐慌指數",
+    }
+    lines: list[str] = []
+    for sym, label in symbols.items():
+        try:
+            df = yf.Ticker(sym).history(period="5d")
+            if len(df) >= 2:
+                last = float(df.iloc[-1]["Close"])
+                prev = float(df.iloc[-2]["Close"])
+                chg = ((last - prev) / prev) * 100
+                unit = "%" if sym in ("^TNX", "^IRX") else ""
+                lines.append(f"- {label}: {last:.2f}{unit} ({chg:+.2f}%)")
+        except Exception:
+            continue
+    return "\n".join(lines) if lines else "暫無最新利率與總經指數快照"
+
+
+def _call_fomc_gemini_json(
+    client: genai.Client,
+    prompt: str,
+    fallback_models: list[str],
+    exhausted_models: set[str],
+    generate_with_retry: Any,
+    parse_json_response: Any,
+) -> dict[str, Any]:
+    """優先嘗試開啟 Google Search Grounding 取得最新聯準會官方利率決議，失敗則自動降級純 RSS 模式。"""
+    for use_search in (True, False):
+        for model_name in fallback_models:
+            if not use_search and model_name in exhausted_models:
+                continue
+            try:
+                kwargs: dict[str, Any] = {
+                    "temperature": 0.2,
+                    "response_mime_type": "application/json",
+                }
+                if use_search:
+                    kwargs["tools"] = [{"google_search": {}}]
+                try:
+                    res = generate_with_retry(
+                        client,
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(**kwargs),
+                    )
+                except Exception as first_err:
+                    err_msg = str(first_err)
+                    if any(k in err_msg for k in ("404", "429", "503", "504", "NOT_FOUND", "RESOURCE_EXHAUSTED")):
+                        raise
+                    if use_search:
+                        res = generate_with_retry(
+                            client,
+                            model=model_name,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                tools=[{"google_search": {}}],
+                                temperature=0.2,
+                            ),
+                        )
+                    else:
+                        raise
+                return parse_json_response(res.text or "")
+            except Exception as exc:
+                err_msg = str(exc)
+                if not use_search and ("429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg):
+                    exhausted_models.add(model_name)
+                print(f"[警告] FOMC 分析 ({model_name}, grounding={use_search}) 失敗: {exc}")
+    raise RuntimeError("FOMC 分析所有模型皆失敗")
+
+
+def _sync_fomc_events(
+    db: Any,
+    client: genai.Client,
+    portfolio: list[dict[str, Any]],
+    today_date: date,
+    start_date: date,
+    end_date: date,
+    existing_docs: dict[str, dict[str, Any]],
+    force_refresh: bool,
+    fallback_models: list[str],
+    exhausted_models: set[str],
+    generate_with_retry: Any,
+    parse_json_response: Any,
+) -> int:
+    """同步過去 90 天 ～ 未來 90 天內的美國聯準會 FOMC 會議並產出總經與產業影響分析。"""
+    macro_snapshot = _get_macro_rates_snapshot()
+    holdings_brief = "、".join(
+        [f"{s.get('name', '')}({s.get('ticker', '')})" for s in portfolio[:15]]
+    ) or "台美科技與權值股"
+
+    count = 0
+    for m_start, m_decision, has_sep, tw_time in FOMC_OFFICIAL_SCHEDULE:
+        d_obj = datetime.strptime(m_decision, "%Y-%m-%d").date()
+        if not (start_date <= d_obj <= end_date):
+            continue
+
+        doc_id = f"MACRO_FOMC_fomc_{m_decision}"
+        status = "past" if d_obj <= today_date else "upcoming"
+        sep_tag = "（含 SEP 利率點陣圖）" if has_sep else ""
+        month_label = f"{d_obj.year}年{d_obj.month}月"
+        title = f"{month_label} 美國聯準會 FOMC 利率決策會議{sep_tag}"
+
+        prev_doc = existing_docs.get(doc_id)
+        prev_ai = (prev_doc or {}).get("ai_analysis") or {}
+        prev_details = (prev_doc or {}).get("details") or {}
+        has_valid_prev = bool(
+            (prev_ai.get("highlights") or prev_ai.get("preview_focus"))
+            and prev_ai.get("macro_impact")
+            and prev_ai.get("sector_impact")
+            and prev_ai.get("verdict") != "待補充"
+        )
+        became_past = (prev_doc or {}).get("status") == "upcoming" and status == "past"
+
+        if has_valid_prev and not became_past and not force_refresh:
+            details = prev_details
+            ai_analysis = prev_ai
+            summary = (prev_doc or {}).get("summary") or f"會議日期：{m_start} ~ {m_decision}｜{tw_time}"
+            print(f"  [快取] {doc_id} 沿用既有 FOMC 分析")
+        else:
+            print(f"  [分析] 生成 FOMC 會議 {doc_id} ({status}) 總經與產業深度解析...")
+            en_month = d_obj.strftime("%B %Y")
+            rss_en = _fetch_google_news_rss(f"Federal Reserve FOMC interest rate decision {en_month}", "US", max_items=8)
+            rss_zh = _fetch_google_news_rss(f"聯準會 FOMC 利率決議 {month_label}", "TW", max_items=6)
+            rss_lines = "\n".join(
+                [f"- {n['title']} [{n['pubDate']}]" for n in (rss_en + rss_zh)[:12]]
+            ) or "無近期 RSS 新聞"
+
+            if status == "past":
+                prompt = f"""
+                今天是 {today_date.strftime('%Y-%m-%d')}。你是資深總體經濟與全球跨產業策略師。
+                請針對已結束的【{title}】（美東會議：{m_start} ~ {m_decision}，{tw_time}）檢索並彙整實際利率決議結果，深入分析其對「總體經濟」與「主要產業面」的總體影響：
+
+                - 目前市場利率與指數背景：
+                {macro_snapshot}
+                - 使用者目前持股清單：{holdings_brief}
+                - 相關新聞參考：
+                {rss_lines}
+
+                請嚴格輸出 JSON 格式（不要加 Markdown 標記）：
+                {{
+                  "rate_action": "實際利率調整動作（例如：降息 1 碼 (-25bps) / 維持利率不變 / 升息 1 碼）",
+                  "target_rate_range": "決議後的聯邦基金目標利率區間（例如：3.75% - 4.00%）",
+                  "policy_stance": "鴿派利多 / 中性偏鴿 / 中性穩健 / 中性偏鷹 / 鷹派承壓 五選一",
+                  "summary": "一句話精簡總結本次會議結果（45字內）",
+                  "highlights": "會議決議與利率調整重點：說明利率調整幅度、投票意向、會後聲明措辭變化、鮑爾/主席記者會基調，若含 SEP 則說明最新利率點陣圖中位數與通膨/GDP預測變化（180字內）",
+                  "macro_impact": "對總體經濟之總體影響：解析對美國通膨、就業、經濟軟著陸機率、10年期美債殖利率、美元指數、以及全球與台美股資金流動性／本益比估值的影響（180字內）",
+                  "sector_impact": "對主要產業面總體影響：分點說明(1)半導體與AI科技成長股、(2)金融與銀行業、(3)高股息/公用事業/債券防禦族群、(4)中小型成長股與航太國防等利率敏感產業的受惠或承壓方向（220字內）",
+                  "extra_insights": "結合使用者目前持股（{holdings_brief}）的具體資產配置、倉位與風險操作啟示（140字內）"
+                }}
+                """
+            else:
+                days_left = (d_obj - today_date).days
+                prompt = f"""
+                今天是 {today_date.strftime('%Y-%m-%d')}。你是資深總體經濟與全球跨產業策略師。
+                美國聯準會將於 {m_start} ~ {m_decision}（{tw_time}，距離今日還有 {days_left} 天）召開【{title}】。
+                請根據目前利率環境與市場最新定價，提供會前總經與產業面情境分析：
+
+                - 目前市場利率與指數背景：
+                {macro_snapshot}
+                - 使用者目前持股清單：{holdings_brief}
+                - 相關新聞參考：
+                {rss_lines}
+
+                請嚴格輸出 JSON 格式（不要加 Markdown 標記）：
+                {{
+                  "rate_action": "市場目前主流預期（例如：市場預期降息 1 碼 / 市場預期按兵不動）",
+                  "target_rate_range": "目前基準利率區間（例如：3.75% - 4.00%）",
+                  "policy_stance": "事前觀察",
+                  "summary": "一句話會前焦點總結（45字內）",
+                  "preview_focus": "會前市場預期與 3 大關鍵觀察指標：利率期貨定價機率、最新 CPI/PCE 通膨與非農就業數據指引、以及本次聲明／點陣圖最關鍵的變數（180字內）",
+                  "macro_impact": "不同利率情境對總經之可能影響：對照『符合預期』vs『意外偏鷹／偏鴿』時，美債殖利率、美元與全球股市估值的可能反應（180字內）",
+                  "sector_impact": "各大產業會前影響評估：說明半導體/AI科技股、金融股、中小型成長股與防禦型資產在不同利率結果下的強弱輪動方向（200字內）",
+                  "extra_insights": "針對使用者目前持股（{holdings_brief}）的會前倉位控管與避險提醒（140字內）"
+                }}
+                """
+
+            try:
+                parsed = _call_fomc_gemini_json(
+                    client, prompt, fallback_models, exhausted_models, generate_with_retry, parse_json_response
+                )
+                details = {
+                    "meeting_range": f"{m_start} ~ {m_decision}",
+                    "tw_release_time": tw_time,
+                    "has_sep": has_sep,
+                    "rate_action": str(parsed.get("rate_action") or "依聯準會公告").strip(),
+                    "target_rate_range": str(parsed.get("target_rate_range") or "--").strip(),
+                }
+                summary = str(parsed.get("summary") or f"會議日期：{m_start} ~ {m_decision}｜{tw_time}").strip()
+                ai_analysis = {
+                    "verdict": str(parsed.get("policy_stance") or ("事前觀察" if status == "upcoming" else "中性穩健")).strip(),
+                    "highlights": str(parsed.get("highlights") or "").strip(),
+                    "preview_focus": str(parsed.get("preview_focus") or "").strip(),
+                    "macro_impact": str(parsed.get("macro_impact") or "").strip(),
+                    "sector_impact": str(parsed.get("sector_impact") or "").strip(),
+                    "extra_insights": str(parsed.get("extra_insights") or "").strip(),
+                }
+            except Exception as exc:
+                print(f"[警告] FOMC 會議 {doc_id} 分析失敗: {exc}")
+                details = {
+                    "meeting_range": f"{m_start} ~ {m_decision}",
+                    "tw_release_time": tw_time,
+                    "has_sep": has_sep,
+                    "rate_action": "待補充",
+                    "target_rate_range": "--",
+                }
+                summary = f"會議日期：{m_start} ~ {m_decision}｜{tw_time}"
+                ai_analysis = {
+                    "verdict": "待補充",
+                    "highlights": "AI 分析暫時異常，請稍後重試。",
+                    "macro_impact": "",
+                    "sector_impact": "",
+                    "extra_insights": "",
+                }
+            time.sleep(1.5)
+
+        db.collection("stock_events").document(doc_id).set(
+            {
+                "market": "MACRO",
+                "ticker": "FOMC",
+                "name": "美國聯準會 (Fed)",
+                "event_type": "fomc",
+                "event_date": m_decision,
+                "status": status,
+                "title": title,
+                "summary": summary,
+                "details": details,
+                "ai_analysis": ai_analysis,
+                "source": "auto",
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+        count += 1
+
+    print(f"美國聯準會 FOMC 會議同步完成，共處理 {count} 場會議！")
+    return count
+

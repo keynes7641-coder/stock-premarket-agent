@@ -37,10 +37,10 @@ rules_version = '2';
 // Access Pattern: Populated by Python backend (main.py --mode events) via Admin SDK;
 //                 authorized admin may also read, create/update manual events, or delete events.
 // Fields (client manual writes):
-//   - market: string (required, immutable, enum: 'TW' | 'US')
+//   - market: string (required, immutable, enum: 'TW' | 'US' | 'MACRO')
 //   - ticker: string (required, immutable, 1..15 chars)
 //   - name: string (required, 1..100 chars)
-//   - event_type: string (required, immutable, enum: 'conference' | 'earnings' | 'dividend' | 'other')
+//   - event_type: string (required, immutable, enum: 'conference' | 'earnings' | 'dividend' | 'fomc' | 'other')
 //   - event_date: string (required, YYYY-MM-DD)
 //   - title: string (required, 1..150 chars)
 //   - summary: string (optional, 0..1000 chars)
@@ -151,11 +151,11 @@ service cloud.firestore {
 
       return hasOnlyAllowedFields(allowedFields) &&
         hasRequiredFields(requiredFields) &&
-        data.market in ['TW', 'US'] &&
+        data.market in ['TW', 'US', 'MACRO'] &&
         validStringLength('ticker', 1, 15) &&
         data.ticker.matches('^[A-Z0-9][A-Z0-9.-]{0,14}$') &&
         validStringLength('name', 1, 100) &&
-        data.event_type in ['conference', 'earnings', 'dividend', 'other'] &&
+        data.event_type in ['conference', 'earnings', 'dividend', 'fomc', 'other'] &&
         data.event_date is string &&
         data.event_date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
         eventId == data.market + '_' + data.ticker + '_' + data.event_type + '_' + data.event_date &&
