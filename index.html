@@ -28,9 +28,11 @@
         <p class="text-slate-400 text-sm mt-1">自動彙整隔夜總經、即時走勢、技術指標與法人籌碼動態</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button type="button" id="tab-reports" class="px-4 py-2 rounded-lg bg-sky-600 font-medium transition text-sm">盤前報告</button>
-        <button type="button" id="tab-live" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">⚡ 即時走勢</button>
-        <button type="button" id="tab-portfolio" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">持股清單管理</button>
+        <button type="button" id="tab-reports" class="px-3.5 py-2 rounded-lg bg-sky-600 font-medium transition text-sm">盤前報告</button>
+        <button type="button" id="tab-live" class="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">⚡ 即時走勢</button>
+        <button type="button" id="tab-afterhours" class="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">🌆 盤後分析</button>
+        <button type="button" id="tab-events" class="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">📅 重大事件</button>
+        <button type="button" id="tab-portfolio" class="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm">持股清單管理</button>
         <button type="button" id="btn-logout" class="px-3 py-2 rounded-lg text-slate-400 hover:text-white text-sm transition">登出</button>
       </div>
     </header>
@@ -363,7 +365,195 @@
       </div>
     </div>
 
-    <!-- 分頁 3：持股清單管理 -->
+    <!-- 分頁 3：盤後收盤分析 -->
+    <div id="view-afterhours" class="hidden space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <select id="afterhours-market-filter" class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-amber-500">
+            <option value="ALL">全部市場 (台+美)</option>
+            <option value="TW">僅台股盤後 (TW)</option>
+            <option value="US">僅美股盤後 (US)</option>
+          </select>
+          <select id="afterhours-select" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-sm text-slate-100 focus:outline-none focus:border-amber-500">
+            <option value="">載入盤後報告中...</option>
+          </select>
+          <button type="button" id="btn-refresh-afterhours" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm transition">重新整理</button>
+        </div>
+        <span class="text-xs text-slate-400">自動排程：台股 16:30 ／ 美股隔日 06:30（台灣時間）</span>
+      </div>
+
+      <div id="afterhours-empty" class="hidden bg-slate-800/60 border border-slate-700 rounded-xl p-8 text-center text-slate-400">
+        目前尚無盤後分析報告。台股將於每日 16:30、美股將於隔日 06:30 自動產出，或可至 GitHub Actions 手動觸發 <code class="text-amber-300">mode: afterhours</code>。
+      </div>
+
+      <div id="afterhours-macro-card" class="bg-slate-800/80 border border-slate-700 rounded-xl p-6 hidden">
+        <h2 class="text-lg font-bold text-amber-400 mb-2">🌆 當日收盤指數與盤後大盤總結</h2>
+        <pre id="afterhours-macro-content" class="whitespace-pre-wrap text-sm text-slate-300 font-sans leading-relaxed"></pre>
+      </div>
+
+      <div id="afterhours-stocks-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+    </div>
+
+    <!-- 分頁 4：重大事件行事曆（過去三個月 ～ 未來三個月） -->
+    <div id="view-events" class="hidden space-y-6">
+      <!-- 頂部控制與篩選列 -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-3">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-sky-400">📅 持股重大事件行事曆（過去 3 個月 ～ 未來 3 個月）</h2>
+            <p class="text-xs text-slate-400 mt-0.5">追蹤法說會、財報發表與配發股息股利；點擊已發生事件可即時瀏覽財報與 AI 深度解析</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" id="btn-events-view-calendar" class="px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold transition">📆 月曆視圖</button>
+            <button type="button" id="btn-events-view-timeline" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition">📋 時間軸清單</button>
+            <button type="button" id="btn-toggle-manual-event" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition">➕ 手動新增事件</button>
+            <button type="button" id="btn-refresh-events" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 text-xs transition">重新整理</button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/80 text-xs">
+          <select id="events-market-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-slate-100 focus:outline-none focus:border-sky-500">
+            <option value="ALL">全部市場 (台+美)</option>
+            <option value="TW">僅台股 (TW)</option>
+            <option value="US">僅美股 (US)</option>
+          </select>
+          <select id="events-type-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-slate-100 focus:outline-none focus:border-sky-500">
+            <option value="ALL">全部事件類型</option>
+            <option value="conference">🎤 法說會</option>
+            <option value="earnings">📊 財報發表</option>
+            <option value="dividend">💰 股息股利</option>
+            <option value="other">📌 其他事件</option>
+          </select>
+          <select id="events-stock-filter" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-slate-100 focus:outline-none focus:border-sky-500">
+            <option value="ALL">全部持股標的</option>
+          </select>
+          <div id="events-stats-summary" class="ml-auto flex flex-wrap gap-2 text-[11px] text-slate-300"></div>
+        </div>
+      </div>
+
+      <!-- 手動新增事件表單（預設收合） -->
+      <div id="manual-event-form-card" class="hidden bg-slate-800 border border-emerald-500/40 rounded-xl p-5">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-sm font-bold text-emerald-400">➕ 手動記錄重大事件（法說會 / 財報 / 股息）</h3>
+          <button type="button" id="btn-close-manual-event" class="text-xs text-slate-400 hover:text-white">收合 ✕</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <select id="ev-stock-select" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500">
+            <option value="">選擇已儲存持股...</option>
+          </select>
+          <select id="ev-type" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500">
+            <option value="conference">🎤 法說會 (conference)</option>
+            <option value="earnings">📊 財報發表 (earnings)</option>
+            <option value="dividend">💰 股息股利 (dividend)</option>
+            <option value="other">📌 其他重大事件 (other)</option>
+          </select>
+          <input id="ev-date" type="date" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <input id="ev-title" type="text" placeholder="事件標題 (例: 2026 Q4 法人說明會)" class="md:col-span-2 bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <input id="ev-summary" type="text" placeholder="備註摘要 (選填)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button type="button" id="btn-save-manual-event" class="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-5 py-1.5 rounded-lg text-sm transition">儲存事件</button>
+        </div>
+      </div>
+
+      <!-- 視圖 A：月曆格線視圖 -->
+      <div id="events-calendar-container" class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-cal-prev" class="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs font-semibold">◀ 上個月</button>
+            <h3 id="cal-month-label" class="text-lg font-bold text-white min-w-[120px] text-center">--</h3>
+            <button type="button" id="btn-cal-next" class="px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs font-semibold">下個月 ▶</button>
+            <button type="button" id="btn-cal-today" class="px-2.5 py-1 rounded bg-slate-700/70 hover:bg-slate-600 text-xs text-sky-300">本月</button>
+          </div>
+          <div class="flex flex-wrap gap-3 text-[11px] text-slate-300">
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block"></span>法說會</span>
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span>財報</span>
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>股息股利</span>
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block"></span>其他</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-400 mb-2">
+          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+        </div>
+        <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5"></div>
+      </div>
+
+      <!-- 視圖 B：時間軸清單視圖（未來三個月 / 過去三個月） -->
+      <div id="events-timeline-container" class="hidden space-y-6">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+          <h3 class="text-base font-bold text-emerald-400 mb-3">🔜 未來三個月即將發生</h3>
+          <div id="events-upcoming-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+          <h3 class="text-base font-bold text-sky-400 mb-3">📜 過去三個月已發生（點擊檢視財報 / 法說會 AI 深度分析）</h3>
+          <div id="events-past-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 事件深度解析與即時財報 Modal -->
+    <div id="event-detail-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 space-y-5">
+        <div class="flex justify-between items-start gap-4 border-b border-slate-700 pb-4">
+          <div>
+            <div class="flex flex-wrap items-center gap-2 mb-1.5">
+              <span id="ev-modal-type-badge" class="px-2.5 py-0.5 rounded text-xs font-bold">--</span>
+              <span id="ev-modal-status-badge" class="px-2.5 py-0.5 rounded text-xs font-semibold">--</span>
+              <span id="ev-modal-verdict-badge" class="px-2.5 py-0.5 rounded text-xs font-bold">--</span>
+            </div>
+            <h3 id="ev-modal-title" class="text-xl font-bold text-white">--</h3>
+            <p id="ev-modal-subtitle" class="text-xs text-slate-400 mt-1">--</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button type="button" id="btn-ev-modal-delete" class="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold transition">刪除</button>
+            <button type="button" id="btn-ev-modal-close" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-bold transition">✕</button>
+          </div>
+        </div>
+
+        <!-- 股息股利詳情卡（僅 dividend 事件顯示） -->
+        <div id="ev-modal-dividend-section" class="hidden bg-slate-900/60 border border-amber-500/30 rounded-xl p-4">
+          <h4 class="text-sm font-bold text-amber-400 mb-3">💰 配息明細</h4>
+          <div id="ev-modal-dividend-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs"></div>
+        </div>
+
+        <!-- 即時財報瀏覽器（earnings 事件顯示，並支援即時從 FinMind 補抓台股最新財報） -->
+        <div id="ev-modal-financials-section" class="hidden bg-slate-900/60 border border-sky-500/30 rounded-xl p-4 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 class="text-sm font-bold text-sky-400">📊 即時季度財報數據瀏覽</h4>
+              <p id="ev-modal-fin-unit" class="text-[11px] text-slate-400 mt-0.5">近 4 季營收、三率（毛利率 / 營益率 / 淨利率）與 EPS 趨勢</p>
+            </div>
+            <button type="button" id="btn-ev-fetch-live-fin" class="px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition">即時同步最新財報</button>
+          </div>
+          <div id="ev-modal-fin-loading" class="hidden text-xs text-slate-400 py-4 text-center">正在即時讀取季度財報資料...</div>
+          <div id="ev-modal-fin-table-wrap" class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="bg-slate-800 text-slate-300">
+                <tr>
+                  <th class="p-2.5">季別</th>
+                  <th class="p-2.5 text-right">營收</th>
+                  <th class="p-2.5 text-right">季增 QoQ</th>
+                  <th class="p-2.5 text-right">年增 YoY</th>
+                  <th class="p-2.5 text-right">毛利率</th>
+                  <th class="p-2.5 text-right">營益率</th>
+                  <th class="p-2.5 text-right">淨利率</th>
+                  <th class="p-2.5 text-right">EPS</th>
+                </tr>
+              </thead>
+              <tbody id="ev-modal-fin-tbody" class="divide-y divide-slate-700/70"></tbody>
+            </table>
+          </div>
+          <div class="h-56 w-full">
+            <canvas id="ev-modal-fin-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- AI 深度分析內容區（財報分析 / 法說會重點與未來營運 / 事前觀察） -->
+        <div id="ev-modal-ai-section" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- 分頁 5：持股清單管理 -->
     <div id="view-portfolio" class="hidden">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6">
         <h2 class="text-lg font-bold text-emerald-400 mb-4">➕ 新增 / 更新持股</h2>
@@ -418,7 +608,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, query, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCXATX7l7AkmfX-bswFO4d1N05kpA1dPMU",
@@ -435,6 +625,8 @@
     const db = getFirestore(app);
 
     let cachedReports = {};
+    let cachedAfterhours = {};
+    let cachedEvents = {};
     let cachedPortfolio = {};
     let currentTab = "reports";
 
@@ -446,6 +638,12 @@
     let volumeChartInstance = null;
     let instChartInstance = null;
     let liveRefreshTimer = null;
+
+    // 重大事件行事曆狀態
+    let calendarDisplayMode = "calendar"; // "calendar" | "timeline"
+    let calendarViewDate = new Date();
+    let activeModalEventId = null;
+    let eventFinChartInstance = null;
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -499,7 +697,7 @@
       if (user) {
         document.getElementById("auth-section").classList.add("hidden");
         document.getElementById("app-section").classList.remove("hidden");
-        await Promise.all([loadReports(), loadPortfolio()]);
+        await Promise.all([loadReports(), loadPortfolio(), loadAfterhoursReports(), loadStockEvents()]);
         if (currentTab === "live") {
           refreshLiveView();
         }
@@ -530,15 +728,14 @@
 
     function switchTab(tab) {
       currentTab = tab;
-      document.getElementById("view-reports").classList.toggle("hidden", tab !== "reports");
-      document.getElementById("view-live").classList.toggle("hidden", tab !== "live");
-      document.getElementById("view-portfolio").classList.toggle("hidden", tab !== "portfolio");
+      const views = ["reports", "live", "afterhours", "events", "portfolio"];
+      const activeClass = "px-3.5 py-2 rounded-lg bg-sky-600 font-medium transition text-sm";
+      const idleClass = "px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm";
 
-      const activeClass = "px-4 py-2 rounded-lg bg-sky-600 font-medium transition text-sm";
-      const idleClass = "px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-medium transition text-sm";
-      document.getElementById("tab-reports").className = tab === "reports" ? activeClass : idleClass;
-      document.getElementById("tab-live").className = tab === "live" ? activeClass : idleClass;
-      document.getElementById("tab-portfolio").className = tab === "portfolio" ? activeClass : idleClass;
+      views.forEach((v) => {
+        document.getElementById(`view-${v}`).classList.toggle("hidden", tab !== v);
+        document.getElementById(`tab-${v}`).className = tab === v ? activeClass : idleClass;
+      });
 
       if (tab === "live") {
         refreshLiveView();
@@ -546,15 +743,91 @@
       } else {
         stopLiveAutoRefresh();
       }
+
+      if (tab === "afterhours") {
+        renderAfterhoursSelectOptions();
+      } else if (tab === "events") {
+        populateEventsStockSelectors();
+        renderEventsView();
+      }
     }
 
     document.getElementById("tab-reports").addEventListener("click", () => switchTab("reports"));
     document.getElementById("tab-live").addEventListener("click", () => switchTab("live"));
+    document.getElementById("tab-afterhours").addEventListener("click", () => switchTab("afterhours"));
+    document.getElementById("tab-events").addEventListener("click", () => switchTab("events"));
     document.getElementById("tab-portfolio").addEventListener("click", () => switchTab("portfolio"));
     document.getElementById("report-select").addEventListener("change", renderSelectedReport);
     document.getElementById("btn-refresh-reports").addEventListener("click", loadReports);
     document.getElementById("btn-save-stock").addEventListener("click", saveStock);
     document.getElementById("btn-reset-form").addEventListener("click", resetPortfolioForm);
+
+    // 盤後分析控制項
+    document.getElementById("afterhours-market-filter").addEventListener("change", renderAfterhoursSelectOptions);
+    document.getElementById("afterhours-select").addEventListener("change", renderSelectedAfterhours);
+    document.getElementById("btn-refresh-afterhours").addEventListener("click", loadAfterhoursReports);
+    document.getElementById("afterhours-stocks-grid").addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-ah-live-ticker]");
+      if (!btn) return;
+      const market = btn.dataset.ahLiveMarket;
+      const ticker = btn.dataset.ahLiveTicker;
+      const existing = cachedPortfolio[`${market}_${ticker}`];
+      activeLiveTarget = existing
+        ? { ...existing }
+        : { market, ticker, name: btn.dataset.ahLiveName || ticker, avg_cost: null };
+      switchTab("live");
+    });
+
+    // 重大事件行事曆控制項
+    document.getElementById("btn-events-view-calendar").addEventListener("click", () => {
+      calendarDisplayMode = "calendar";
+      renderEventsView();
+    });
+    document.getElementById("btn-events-view-timeline").addEventListener("click", () => {
+      calendarDisplayMode = "timeline";
+      renderEventsView();
+    });
+    document.getElementById("btn-refresh-events").addEventListener("click", loadStockEvents);
+    document.getElementById("events-market-filter").addEventListener("change", renderEventsView);
+    document.getElementById("events-type-filter").addEventListener("change", renderEventsView);
+    document.getElementById("events-stock-filter").addEventListener("change", renderEventsView);
+    document.getElementById("btn-cal-prev").addEventListener("click", () => {
+      calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() - 1, 1);
+      renderCalendarGrid();
+    });
+    document.getElementById("btn-cal-next").addEventListener("click", () => {
+      calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 1);
+      renderCalendarGrid();
+    });
+    document.getElementById("btn-cal-today").addEventListener("click", () => {
+      calendarViewDate = new Date();
+      renderCalendarGrid();
+    });
+    document.getElementById("btn-toggle-manual-event").addEventListener("click", () => {
+      document.getElementById("manual-event-form-card").classList.toggle("hidden");
+      populateEventsStockSelectors();
+    });
+    document.getElementById("btn-close-manual-event").addEventListener("click", () => {
+      document.getElementById("manual-event-form-card").classList.add("hidden");
+    });
+    document.getElementById("btn-save-manual-event").addEventListener("click", saveManualEvent);
+    document.getElementById("btn-ev-modal-close").addEventListener("click", closeEventDetailModal);
+    document.getElementById("event-detail-modal").addEventListener("click", (e) => {
+      if (e.target.id === "event-detail-modal") closeEventDetailModal();
+    });
+    document.getElementById("btn-ev-modal-delete").addEventListener("click", () => {
+      if (activeModalEventId) deleteEventById(activeModalEventId);
+    });
+    document.getElementById("btn-ev-fetch-live-fin").addEventListener("click", () => {
+      if (activeModalEventId && cachedEvents[activeModalEventId]) {
+        fetchLiveTwFinancialsForModal(cachedEvents[activeModalEventId]);
+      }
+    });
+    document.getElementById("view-events").addEventListener("click", (event) => {
+      const target = event.target.closest("[data-event-id]");
+      if (!target) return;
+      openEventDetailModal(target.dataset.eventId);
+    });
 
     document.getElementById("btn-refresh-live").addEventListener("click", () => refreshLiveView(true));
     document.getElementById("live-market-filter").addEventListener("change", async (e) => {
@@ -1765,6 +2038,718 @@
       if (confirm("確定要刪除此檔持股嗎？")) {
         await deleteDoc(doc(db, "portfolio", docId));
         loadPortfolio();
+      }
+    }
+
+    // ==================== 分頁 3：盤後收盤分析 ====================
+    async function loadAfterhoursReports() {
+      cachedAfterhours = {};
+      try {
+        const q = query(collection(db, "afterhours_reports"), orderBy("date", "desc"), limit(30));
+        const snap = await getDocs(q);
+        snap.forEach((docSnap) => {
+          cachedAfterhours[docSnap.id] = docSnap.data();
+        });
+        renderAfterhoursSelectOptions();
+      } catch (e) {
+        const emptyEl = document.getElementById("afterhours-empty");
+        emptyEl.classList.remove("hidden");
+        emptyEl.innerText = "無法載入盤後分析報告：" + e.message;
+      }
+    }
+
+    function renderAfterhoursSelectOptions() {
+      const select = document.getElementById("afterhours-select");
+      const emptyEl = document.getElementById("afterhours-empty");
+      const macroCard = document.getElementById("afterhours-macro-card");
+      const grid = document.getElementById("afterhours-stocks-grid");
+      const marketFilter = document.getElementById("afterhours-market-filter").value;
+
+      const entries = Object.entries(cachedAfterhours)
+        .filter(([, d]) => marketFilter === "ALL" || d.market === marketFilter)
+        .sort((a, b) => b[0].localeCompare(a[0]));
+
+      select.innerHTML = "";
+      if (entries.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.innerText = "尚無符合條件的盤後報告";
+        select.appendChild(opt);
+        emptyEl.classList.remove("hidden");
+        macroCard.classList.add("hidden");
+        grid.innerHTML = "";
+        return;
+      }
+
+      emptyEl.classList.add("hidden");
+      entries.forEach(([id, data]) => {
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.innerText = `${data.date} 【${data.market === "TW" ? "台股" : "美股"}盤後分析】`;
+        select.appendChild(opt);
+      });
+      renderSelectedAfterhours();
+    }
+
+    function renderSelectedAfterhours() {
+      const id = document.getElementById("afterhours-select").value;
+      const report = cachedAfterhours[id];
+      const macroCard = document.getElementById("afterhours-macro-card");
+      const grid = document.getElementById("afterhours-stocks-grid");
+
+      if (!report) {
+        macroCard.classList.add("hidden");
+        grid.innerHTML = "";
+        return;
+      }
+
+      macroCard.classList.remove("hidden");
+      document.getElementById("afterhours-macro-content").innerText = report.market_summary || "";
+
+      grid.innerHTML = "";
+      (report.stocks || []).forEach((s) => {
+        const sentiment = String(s.sentiment || "中性");
+        const badgeColor = sentiment.includes("多")
+          ? "bg-rose-500/20 text-rose-400 border-rose-500/40"
+          : sentiment.includes("空")
+            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+            : "bg-slate-600/40 text-slate-300 border-slate-500/40";
+
+        const chgColor = colorBySign(s.change_pct);
+        const priceBadge =
+          s.close_price != null
+            ? `<span class="font-extrabold ${chgColor}">收 ${fmtNum(s.close_price, 2)} (${fmtSigned(s.change_pct, 2, "%")})</span>`
+            : "";
+
+        let pnlText = "";
+        if (s.close_price != null && s.avg_cost > 0) {
+          const pnlPct = ((s.close_price - s.avg_cost) / s.avg_cost) * 100;
+          pnlText = `｜<span class="${colorBySign(pnlPct)}">損益 ${fmtSigned(pnlPct, 2, "%")}</span>`;
+        }
+
+        grid.insertAdjacentHTML(
+          "beforeend",
+          `
+          <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex flex-col justify-between space-y-3">
+            <div>
+              <div class="flex justify-between items-start gap-2 mb-2">
+                <div>
+                  <h3 class="text-lg font-bold text-white">${escapeHtml(s.name)} <span class="text-sm text-slate-400">(${escapeHtml(s.ticker)})</span></h3>
+                  <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
+                    ${priceBadge}
+                    <span>均價 ${escapeHtml(s.avg_cost)}</span>${pnlText}
+                  </div>
+                </div>
+                <div class="flex flex-col items-end gap-1.5 shrink-0">
+                  <span class="px-2.5 py-0.5 text-xs font-bold rounded border ${badgeColor}">${escapeHtml(sentiment)}</span>
+                  <button type="button" data-ah-live-market="${escapeHtml(report.market)}" data-ah-live-ticker="${escapeHtml(s.ticker)}" data-ah-live-name="${escapeHtml(s.name)}" class="text-[11px] text-sky-400 hover:underline">⚡ 看走勢</button>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-2 text-[11px] mb-3">
+                ${s.candle_pattern ? `<span class="px-2 py-0.5 rounded bg-slate-700/80 text-amber-300 font-semibold">🕯️ ${escapeHtml(s.candle_pattern)}</span>` : ""}
+                ${s.volume_info ? `<span class="px-2 py-0.5 rounded bg-slate-700/80 text-sky-300">📊 ${escapeHtml(s.volume_info)}</span>` : ""}
+              </div>
+
+              <p class="text-xs text-slate-300 mb-2.5 leading-relaxed">${escapeHtml(s.close_summary)}</p>
+
+              <div class="text-xs text-slate-300 mb-2.5 bg-slate-900/60 p-3 rounded-lg space-y-1.5">
+                <div><span class="text-emerald-400 font-semibold">📈 走勢與籌碼覆盤：</span>${escapeHtml(s.intraday_review)}</div>
+                <div><span class="text-sky-400 font-semibold">📰 收盤／盤後消息：</span>${escapeHtml(s.key_events)}</div>
+              </div>
+            </div>
+
+            <div class="border-t border-slate-700 pt-3 space-y-2">
+              <div class="text-sm text-amber-200/90 leading-relaxed">
+                <span class="font-semibold text-amber-400">🎯 明日操作建議：</span>${escapeHtml(s.next_day_strategy)}
+              </div>
+              <div class="flex flex-wrap gap-2 text-[11px]">
+                <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">🛡️ 參考支撐：${escapeHtml(s.support_level || "--")}</span>
+                <span class="px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">🚧 參考壓力：${escapeHtml(s.resistance_level || "--")}</span>
+              </div>
+            </div>
+          </div>
+          `
+        );
+      });
+    }
+
+    // ==================== 分頁 4：重大事件行事曆 & 即時財報/法說分析 ====================
+    const EVENT_TYPE_META = {
+      conference: { label: "法說會", icon: "🎤", pill: "bg-purple-500/25 text-purple-200 border-purple-400/40" },
+      earnings: { label: "財報", icon: "📊", pill: "bg-sky-500/25 text-sky-200 border-sky-400/40" },
+      dividend: { label: "股息股利", icon: "💰", pill: "bg-amber-500/25 text-amber-200 border-amber-400/40" },
+      other: { label: "其他事件", icon: "📌", pill: "bg-slate-600/40 text-slate-200 border-slate-400/40" },
+    };
+
+    function getTodayIsoLocal() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function diffDaysFromToday(isoDate) {
+      const t0 = new Date(getTodayIsoLocal() + "T00:00:00");
+      const t1 = new Date(isoDate + "T00:00:00");
+      return Math.round((t1 - t0) / 86400000);
+    }
+
+    async function loadStockEvents() {
+      cachedEvents = {};
+      try {
+        const snap = await getDocs(collection(db, "stock_events"));
+        snap.forEach((docSnap) => {
+          cachedEvents[docSnap.id] = docSnap.data();
+        });
+        populateEventsStockSelectors();
+        renderEventsView();
+      } catch (e) {
+        console.error("載入重大事件失敗:", e);
+      }
+    }
+
+    function populateEventsStockSelectors() {
+      const filterSel = document.getElementById("events-stock-filter");
+      const manualSel = document.getElementById("ev-stock-select");
+      const prevFilter = filterSel.value || "ALL";
+      const prevManual = manualSel.value || "";
+
+      const entries = Object.entries(cachedPortfolio).sort((a, b) => a[0].localeCompare(b[0]));
+
+      filterSel.innerHTML = `<option value="ALL">全部持股標的</option>`;
+      manualSel.innerHTML = `<option value="">選擇已儲存持股...</option>`;
+
+      entries.forEach(([docId, s]) => {
+        const label = `[${s.market}] ${s.name} (${s.ticker})`;
+        const opt1 = document.createElement("option");
+        opt1.value = docId;
+        opt1.innerText = label;
+        filterSel.appendChild(opt1);
+
+        const opt2 = document.createElement("option");
+        opt2.value = docId;
+        opt2.innerText = label;
+        manualSel.appendChild(opt2);
+      });
+
+      if ([...filterSel.options].some((o) => o.value === prevFilter)) filterSel.value = prevFilter;
+      if ([...manualSel.options].some((o) => o.value === prevManual)) manualSel.value = prevManual;
+    }
+
+    function getFilteredEvents() {
+      const marketFilter = document.getElementById("events-market-filter").value;
+      const typeFilter = document.getElementById("events-type-filter").value;
+      const stockFilter = document.getElementById("events-stock-filter").value;
+
+      // 僅顯示過去 95 天 ～ 未來 95 天內事件
+      return Object.entries(cachedEvents)
+        .filter(([, ev]) => {
+          if (marketFilter !== "ALL" && ev.market !== marketFilter) return false;
+          if (typeFilter !== "ALL" && ev.event_type !== typeFilter) return false;
+          if (stockFilter !== "ALL" && `${ev.market}_${ev.ticker}` !== stockFilter) return false;
+          const d = diffDaysFromToday(ev.event_date);
+          return !Number.isNaN(d) && d >= -95 && d <= 95;
+        })
+        .sort((a, b) => a[1].event_date.localeCompare(b[1].event_date));
+    }
+
+    function renderEventsView() {
+      const isCal = calendarDisplayMode === "calendar";
+      document.getElementById("events-calendar-container").classList.toggle("hidden", !isCal);
+      document.getElementById("events-timeline-container").classList.toggle("hidden", isCal);
+
+      const activeBtn = "px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold transition";
+      const idleBtn = "px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition";
+      document.getElementById("btn-events-view-calendar").className = isCal ? activeBtn : idleBtn;
+      document.getElementById("btn-events-view-timeline").className = !isCal ? activeBtn : idleBtn;
+
+      const filtered = getFilteredEvents();
+      const todayIso = getTodayIsoLocal();
+      const upcomingCount = filtered.filter(([, e]) => e.event_date > todayIso).length;
+      const pastCount = filtered.filter(([, e]) => e.event_date <= todayIso).length;
+
+      document.getElementById("events-stats-summary").innerHTML = `
+        <span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">未來 3 個月：${upcomingCount} 筆</span>
+        <span class="px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">過去 3 個月：${pastCount} 筆</span>
+      `;
+
+      if (isCal) {
+        renderCalendarGrid(filtered);
+      } else {
+        renderEventsTimeline(filtered);
+      }
+    }
+
+    function renderCalendarGrid(filteredEvents = null) {
+      const list = filteredEvents || getFilteredEvents();
+      const year = calendarViewDate.getFullYear();
+      const month = calendarViewDate.getMonth();
+      document.getElementById("cal-month-label").innerText = `${year} 年 ${month + 1} 月`;
+
+      const byDate = {};
+      list.forEach(([id, ev]) => {
+        if (!byDate[ev.event_date]) byDate[ev.event_date] = [];
+        byDate[ev.event_date].push({ id, ev });
+      });
+
+      const firstDay = new Date(year, month, 1);
+      const startWeekday = firstDay.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const todayIso = getTodayIsoLocal();
+
+      const grid = document.getElementById("calendar-days-grid");
+      grid.innerHTML = "";
+
+      for (let i = 0; i < startWeekday; i++) {
+        grid.insertAdjacentHTML("beforeend", `<div class="min-h-[88px] rounded-lg bg-slate-900/25 border border-slate-800/60"></div>`);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const dayEvents = byDate[iso] || [];
+        const isToday = iso === todayIso;
+        const borderCls = isToday
+          ? "border-sky-400 bg-sky-950/30 ring-1 ring-sky-400/50"
+          : "border-slate-700/80 bg-slate-900/55";
+
+        const pillsHtml = dayEvents
+          .map(({ id, ev }) => {
+            const meta = EVENT_TYPE_META[ev.event_type] || EVENT_TYPE_META.other;
+            return `
+              <button type="button" data-event-id="${escapeHtml(id)}" class="w-full text-left px-1.5 py-0.5 rounded border text-[10px] leading-tight truncate hover:brightness-125 transition ${meta.pill}" title="${escapeHtml(ev.name + ' - ' + ev.title)}">
+                ${meta.icon} ${escapeHtml(ev.ticker)} ${escapeHtml(meta.label)}
+              </button>
+            `;
+          })
+          .join("");
+
+        grid.insertAdjacentHTML(
+          "beforeend",
+          `
+          <div class="min-h-[88px] rounded-lg border p-1.5 flex flex-col gap-1 ${borderCls}">
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="${isToday ? "font-extrabold text-sky-300" : "text-slate-400"}">${day}</span>
+              ${isToday ? '<span class="text-[9px] text-sky-400 font-bold">今天</span>' : ""}
+            </div>
+            <div class="space-y-1 overflow-y-auto max-h-20">${pillsHtml}</div>
+          </div>
+          `
+        );
+      }
+    }
+
+    function renderEventsTimeline(filteredEvents) {
+      const todayIso = getTodayIsoLocal();
+      const upcoming = filteredEvents.filter(([, e]) => e.event_date > todayIso);
+      const past = filteredEvents.filter(([, e]) => e.event_date <= todayIso).reverse();
+
+      const renderCard = ([id, ev], isUpcoming) => {
+        const meta = EVENT_TYPE_META[ev.event_type] || EVENT_TYPE_META.other;
+        const dDiff = diffDaysFromToday(ev.event_date);
+        const timeTag = isUpcoming
+          ? `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[11px] font-bold">還有 ${dDiff} 天</span>`
+          : `<span class="px-2 py-0.5 rounded bg-slate-700 text-slate-300 text-[11px]">${Math.abs(dDiff)} 天前</span>`;
+        const verdict = ev.ai_analysis?.verdict
+          ? `<span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[11px] font-semibold">${escapeHtml(ev.ai_analysis.verdict)}</span>`
+          : "";
+        const preview = isUpcoming
+          ? ev.ai_analysis?.preview_focus || ev.summary || "點擊查看事前觀察重點"
+          : ev.ai_analysis?.highlights || ev.summary || "點擊檢視財報／法說會深度解析";
+
+        return `
+          <button type="button" data-event-id="${escapeHtml(id)}" class="text-left bg-slate-900/65 hover:bg-slate-900 border border-slate-700 hover:border-sky-400/60 rounded-xl p-4 transition flex flex-col justify-between gap-2">
+            <div>
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded border text-[11px] font-bold ${meta.pill}">${meta.icon} ${meta.label}</span>
+                  <span class="text-xs font-bold text-slate-300">${escapeHtml(ev.event_date)}</span>
+                </div>
+                <div class="flex items-center gap-1.5">${timeTag}${verdict}</div>
+              </div>
+              <h4 class="text-sm font-bold text-white">${escapeHtml(ev.name)} (${escapeHtml(ev.ticker)}) — ${escapeHtml(ev.title)}</h4>
+              <p class="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">${escapeHtml(preview)}</p>
+            </div>
+            <div class="text-[11px] text-sky-400 font-medium pt-1">
+              ${!isUpcoming && ev.event_type === "earnings" ? "👉 點擊即時瀏覽財報與 AI 深度分析" : !isUpcoming && ev.event_type === "conference" ? "👉 點擊檢視法說會重點與未來營運解析" : "👉 點擊查看詳細內容"}
+            </div>
+          </button>
+        `;
+      };
+
+      const upEl = document.getElementById("events-upcoming-list");
+      upEl.innerHTML =
+        upcoming.length > 0
+          ? upcoming.map((item) => renderCard(item, true)).join("")
+          : `<div class="col-span-full text-sm text-slate-400 py-4 text-center">未來三個月尚無已公告之符合條件事件（可手動新增或於 GitHub Actions 執行 events 同步）。</div>`;
+
+      const pastEl = document.getElementById("events-past-list");
+      pastEl.innerHTML =
+        past.length > 0
+          ? past.map((item) => renderCard(item, false)).join("")
+          : `<div class="col-span-full text-sm text-slate-400 py-4 text-center">過去三個月尚無已記錄事件。</div>`;
+    }
+
+    async function openEventDetailModal(eventId) {
+      const ev = cachedEvents[eventId];
+      if (!ev) return;
+      activeModalEventId = eventId;
+
+      const meta = EVENT_TYPE_META[ev.event_type] || EVENT_TYPE_META.other;
+      const dDiff = diffDaysFromToday(ev.event_date);
+      const isUpcoming = dDiff > 0;
+
+      const typeBadge = document.getElementById("ev-modal-type-badge");
+      typeBadge.innerText = `${meta.icon} ${meta.label}`;
+      typeBadge.className = `px-2.5 py-0.5 rounded border text-xs font-bold ${meta.pill}`;
+
+      const statusBadge = document.getElementById("ev-modal-status-badge");
+      statusBadge.innerText = isUpcoming ? `即將發生（還有 ${dDiff} 天）` : `已發生（${Math.abs(dDiff)} 天前）`;
+      statusBadge.className = isUpcoming
+        ? "px-2.5 py-0.5 rounded text-xs font-semibold bg-emerald-500/20 text-emerald-300"
+        : "px-2.5 py-0.5 rounded text-xs font-semibold bg-slate-700 text-slate-300";
+
+      const verdictBadge = document.getElementById("ev-modal-verdict-badge");
+      const verdict = ev.ai_analysis?.verdict || "";
+      if (verdict) {
+        verdictBadge.classList.remove("hidden");
+        verdictBadge.innerText = verdict;
+        verdictBadge.className =
+          verdict.includes("多") || verdict.includes("優於") || verdict.includes("吸引")
+            ? "px-2.5 py-0.5 rounded text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40"
+            : verdict.includes("保守") || verdict.includes("低於")
+              ? "px-2.5 py-0.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+              : "px-2.5 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40";
+      } else {
+        verdictBadge.classList.add("hidden");
+      }
+
+      document.getElementById("ev-modal-title").innerText = `${ev.name} (${ev.ticker}) — ${ev.title}`;
+      document.getElementById("ev-modal-subtitle").innerText = `市場：${ev.market} ｜ 日期：${ev.event_date} ｜ 來源：${ev.source === "manual" ? "手動新增" : "系統自動追蹤"}`;
+
+      // 1. 股息股利區
+      const divSec = document.getElementById("ev-modal-dividend-section");
+      if (ev.event_type === "dividend") {
+        divSec.classList.remove("hidden");
+        const det = ev.details || {};
+        document.getElementById("ev-modal-dividend-grid").innerHTML = `
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">現金股利</div><div class="text-base font-bold text-amber-300 mt-0.5">${det.cash_dividend != null ? fmtNum(det.cash_dividend, 2) : "--"}</div></div>
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">股票股利</div><div class="text-base font-bold text-sky-300 mt-0.5">${det.stock_dividend != null ? fmtNum(det.stock_dividend, 2) : "--"}</div></div>
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">除權息交易日</div><div class="text-sm font-bold text-white mt-0.5">${escapeHtml(det.ex_date || ev.event_date)}</div></div>
+          <div class="bg-slate-800 rounded-lg p-2.5"><div class="text-slate-400">現金發放日</div><div class="text-sm font-bold text-emerald-300 mt-0.5">${escapeHtml(det.payment_date || "依公司公告")}</div></div>
+        `;
+      } else {
+        divSec.classList.add("hidden");
+      }
+
+      // 2. 即時財報瀏覽區（已發生財報，或法說會亦附最新財報供對照！）
+      const finSec = document.getElementById("ev-modal-financials-section");
+      const showFin = ev.event_type === "earnings" || (ev.event_type === "conference" && !isUpcoming);
+      if (showFin) {
+        finSec.classList.remove("hidden");
+        document.getElementById("btn-ev-fetch-live-fin").classList.toggle("hidden", ev.market !== "TW");
+        const existingFin = ev.details?.financials || [];
+        if (existingFin.length > 0) {
+          renderFinancialsInModal(existingFin);
+        } else if (ev.market === "TW") {
+          fetchLiveTwFinancialsForModal(ev);
+        } else {
+          document.getElementById("ev-modal-fin-tbody").innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">尚無此美股的結構化財報快照，請執行 events 同步更新。</td></tr>`;
+          if (eventFinChartInstance) {
+            eventFinChartInstance.destroy();
+            eventFinChartInstance = null;
+          }
+        }
+      } else {
+        finSec.classList.add("hidden");
+      }
+
+      // 3. AI 深度分析內容區
+      const aiSec = document.getElementById("ev-modal-ai-section");
+      const ai = ev.ai_analysis || {};
+      const blocks = [];
+
+      if (isUpcoming) {
+        blocks.push({
+          title: "🔭 AI 事前觀察重點",
+          color: "border-emerald-500/40 text-emerald-300",
+          body: ai.preview_focus || ev.summary || "尚未生成事前觀察清單，請於排程或手動執行 events 同步。",
+        });
+        if (ai.extra_insights) {
+          blocks.push({
+            title: "🛡️ 事件前後風險控管與操作提醒",
+            color: "border-amber-500/40 text-amber-300",
+            body: ai.extra_insights,
+          });
+        }
+      } else if (ev.event_type === "conference") {
+        blocks.push({
+          title: "🎤 法說會重點事項",
+          color: "border-purple-500/40 text-purple-300",
+          body: ai.highlights || ev.summary || "尚未生成法說會重點分析，請執行 events 同步。",
+        });
+        blocks.push({
+          title: "🚀 公司未來營運重點與成長動能",
+          color: "border-sky-500/40 text-sky-300",
+          body: ai.outlook || "（執行 events 同步後將自動彙整未來營運展望）",
+        });
+        blocks.push({
+          title: "💡 其他重要補充事項（法人關注焦點 / 風險 / 操作啟示）",
+          color: "border-amber-500/40 text-amber-300",
+          body: ai.extra_insights || "（尚無補充事項）",
+        });
+      } else if (ev.event_type === "earnings") {
+        const epsRow =
+          ev.details?.eps_actual != null || ev.details?.eps_estimate != null
+            ? `實際 EPS：${ev.details?.eps_actual ?? "--"} ｜ 市場預估：${ev.details?.eps_estimate ?? "--"}${ev.details?.surprise_pct != null ? ` ｜ 驚喜度：${fmtSigned(ev.details.surprise_pct, 2, "%")}` : ""}\n\n`
+            : "";
+        blocks.push({
+          title: "📊 財報核心亮點與三率解析",
+          color: "border-sky-500/40 text-sky-300",
+          body: epsRow + (ai.highlights || ev.summary || "尚未生成財報 AI 分析。"),
+        });
+        blocks.push({
+          title: "📈 獲利趨勢與基本面強弱評析",
+          color: "border-emerald-500/40 text-emerald-300",
+          body: ai.outlook || "（執行 events 同步後將自動補上獲利趨勢評析）",
+        });
+        blocks.push({
+          title: "🎯 風險隱憂與投資操作建議",
+          color: "border-amber-500/40 text-amber-300",
+          body: ai.extra_insights || "（尚無補充建議）",
+        });
+      } else {
+        blocks.push({
+          title: "💡 事件重點分析",
+          color: "border-amber-500/40 text-amber-300",
+          body: ai.highlights || ev.summary || "無額外摘要。",
+        });
+        if (ai.outlook) {
+          blocks.push({
+            title: "📈 填息與基本面支撐評估",
+            color: "border-sky-500/40 text-sky-300",
+            body: ai.outlook,
+          });
+        }
+        if (ai.extra_insights) {
+          blocks.push({
+            title: "🎯 操作與成本攤提提醒",
+            color: "border-emerald-500/40 text-emerald-300",
+            body: ai.extra_insights,
+          });
+        }
+      }
+
+      aiSec.innerHTML = blocks
+        .map(
+          (b) => `
+          <div class="bg-slate-900/65 border-l-4 ${b.color.split(" ")[0]} rounded-r-xl p-4">
+            <h4 class="text-sm font-bold ${b.color.split(" ")[1]} mb-1.5">${escapeHtml(b.title)}</h4>
+            <p class="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">${escapeHtml(b.body)}</p>
+          </div>
+          `
+        )
+        .join("");
+
+      document.getElementById("event-detail-modal").classList.remove("hidden");
+    }
+
+    function closeEventDetailModal() {
+      document.getElementById("event-detail-modal").classList.add("hidden");
+      activeModalEventId = null;
+    }
+
+    async function fetchLiveTwFinancialsForModal(ev) {
+      if (ev.market !== "TW") return;
+      const loadingEl = document.getElementById("ev-modal-fin-loading");
+      loadingEl.classList.remove("hidden");
+      try {
+        const startDate = getDateOffsetStr(560);
+        const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id=${encodeURIComponent(ev.ticker)}&start_date=${startDate}`;
+        const res = await fetch(url).then((r) => r.json());
+        const rows = res.data || [];
+        const byDate = {};
+        rows.forEach((r) => {
+          if (!byDate[r.date]) byDate[r.date] = {};
+          byDate[r.date][r.type] = Number(r.value);
+        });
+        const sortedDates = Object.keys(byDate).sort();
+        const quarters = [];
+        sortedDates.forEach((d, idx) => {
+          const m = byDate[d];
+          const rev = m.Revenue;
+          const gp = m.GrossProfit;
+          const op = m.OperatingIncome;
+          const ni = m.IncomeAfterTaxes ?? m.IncomeFromContinuingOperations;
+          const eps = m.EPS;
+          if (rev == null && eps == null) return;
+          const gm = gp != null && rev > 0 ? (gp / rev) * 100 : null;
+          const om = op != null && rev > 0 ? (op / rev) * 100 : null;
+          const nm = ni != null && rev > 0 ? (ni / rev) * 100 : null;
+          const prevQRev = idx >= 1 ? byDate[sortedDates[idx - 1]]?.Revenue : null;
+          const prevYDate = `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`;
+          const prevYRev = byDate[prevYDate]?.Revenue;
+          const revQoq = rev && prevQRev > 0 ? ((rev - prevQRev) / prevQRev) * 100 : null;
+          const revYoy = rev && prevYRev > 0 ? ((rev - prevYRev) / prevYRev) * 100 : null;
+          const qNum = Math.floor((Number(d.slice(5, 7)) - 1) / 3) + 1;
+          quarters.push({
+            period_end: d,
+            quarter: `${d.slice(0, 4)} Q${qNum}`,
+            currency: "TWD",
+            revenue: rev != null ? Number((rev / 1e8).toFixed(2)) : null,
+            gross_margin: gm != null ? Number(gm.toFixed(2)) : null,
+            operating_margin: om != null ? Number(om.toFixed(2)) : null,
+            net_margin: nm != null ? Number(nm.toFixed(2)) : null,
+            eps: eps != null ? Number(eps.toFixed(2)) : null,
+            rev_qoq: revQoq != null ? Number(revQoq.toFixed(2)) : null,
+            rev_yoy: revYoy != null ? Number(revYoy.toFixed(2)) : null,
+          });
+        });
+        renderFinancialsInModal(quarters.slice(-4));
+      } catch (e) {
+        document.getElementById("ev-modal-fin-tbody").innerHTML = `<tr><td colspan="8" class="p-4 text-center text-rose-400">即時讀取 FinMind 財報失敗：${escapeHtml(e.message)}</td></tr>`;
+      } finally {
+        loadingEl.classList.add("hidden");
+      }
+    }
+
+    function renderFinancialsInModal(quarters) {
+      const tbody = document.getElementById("ev-modal-fin-tbody");
+      if (eventFinChartInstance) {
+        eventFinChartInstance.destroy();
+        eventFinChartInstance = null;
+      }
+
+      if (!quarters || quarters.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">暫無季度財報數據（ETF 或尚未公告財報）。</td></tr>`;
+        return;
+      }
+
+      const unitLabel = quarters[0].currency === "USD" ? "百萬美元" : "新台幣億元";
+      document.getElementById("ev-modal-fin-unit").innerText = `營收單位：${unitLabel} ｜ 顯示近期 ${quarters.length} 季損益表現`;
+
+      tbody.innerHTML = [...quarters]
+        .reverse()
+        .map(
+          (q) => `
+          <tr class="hover:bg-slate-800/60">
+            <td class="p-2.5 font-bold text-white">${escapeHtml(q.quarter)}</td>
+            <td class="p-2.5 text-right font-semibold text-sky-300">${fmtNum(q.revenue, 2)}</td>
+            <td class="p-2.5 text-right font-semibold ${colorBySign(q.rev_qoq)}">${fmtSigned(q.rev_qoq, 1, "%")}</td>
+            <td class="p-2.5 text-right font-semibold ${colorBySign(q.rev_yoy)}">${fmtSigned(q.rev_yoy, 1, "%")}</td>
+            <td class="p-2.5 text-right text-amber-300">${q.gross_margin != null ? fmtNum(q.gross_margin, 1) + "%" : "--"}</td>
+            <td class="p-2.5 text-right text-purple-300">${q.operating_margin != null ? fmtNum(q.operating_margin, 1) + "%" : "--"}</td>
+            <td class="p-2.5 text-right text-emerald-300">${q.net_margin != null ? fmtNum(q.net_margin, 1) + "%" : "--"}</td>
+            <td class="p-2.5 text-right font-bold text-white">${fmtNum(q.eps, 2)}</td>
+          </tr>
+          `
+        )
+        .join("");
+
+      const ctx = document.getElementById("ev-modal-fin-chart").getContext("2d");
+      eventFinChartInstance = new Chart(ctx, {
+        data: {
+          labels: quarters.map((q) => q.quarter),
+          datasets: [
+            {
+              type: "bar",
+              label: `營收 (${unitLabel})`,
+              data: quarters.map((q) => q.revenue),
+              backgroundColor: "rgba(56, 189, 248, 0.45)",
+              borderColor: "rgba(56, 189, 248, 0.9)",
+              borderWidth: 1,
+              yAxisID: "y",
+            },
+            {
+              type: "line",
+              label: "毛利率 (%)",
+              data: quarters.map((q) => q.gross_margin),
+              borderColor: "#fbbf24",
+              borderWidth: 2,
+              tension: 0.2,
+              yAxisID: "y1",
+            },
+            {
+              type: "line",
+              label: "營益率 (%)",
+              data: quarters.map((q) => q.operating_margin),
+              borderColor: "#c084fc",
+              borderWidth: 2,
+              tension: 0.2,
+              yAxisID: "y1",
+            },
+            {
+              type: "line",
+              label: "淨利率 (%)",
+              data: quarters.map((q) => q.net_margin),
+              borderColor: "#34d399",
+              borderWidth: 2,
+              tension: 0.2,
+              yAxisID: "y1",
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { labels: { color: "#cbd5e1", boxWidth: 12, font: { size: 11 } } },
+          },
+          scales: {
+            x: { ticks: { color: "#94a3b8", font: { size: 11 } }, grid: { color: "rgba(51,65,85,0.25)" } },
+            y: { position: "left", ticks: { color: "#38bdf8", font: { size: 10 } }, grid: { color: "rgba(51,65,85,0.3)" } },
+            y1: { position: "right", ticks: { color: "#fbbf24", font: { size: 10 }, callback: (v) => `${v}%` }, grid: { drawOnChartArea: false } },
+          },
+        },
+      });
+    }
+
+    async function saveManualEvent() {
+      const stockKey = document.getElementById("ev-stock-select").value;
+      const event_type = document.getElementById("ev-type").value;
+      const event_date = document.getElementById("ev-date").value;
+      const title = document.getElementById("ev-title").value.trim();
+      const summary = document.getElementById("ev-summary").value.trim();
+
+      const stock = cachedPortfolio[stockKey];
+      if (!stock || !event_date || !title) {
+        alert("請選擇持股、日期並填寫事件標題！");
+        return;
+      }
+
+      const docId = `${stock.market}_${stock.ticker}_${event_type}_${event_date}`;
+      try {
+        await setDoc(doc(db, "stock_events", docId), {
+          market: stock.market,
+          ticker: stock.ticker,
+          name: stock.name,
+          event_type,
+          event_date,
+          title,
+          summary,
+          source: "manual",
+          updated_at: serverTimestamp(),
+        });
+        alert("重大事件已儲存！");
+        document.getElementById("ev-title").value = "";
+        document.getElementById("ev-summary").value = "";
+        document.getElementById("manual-event-form-card").classList.add("hidden");
+        await loadStockEvents();
+      } catch (e) {
+        alert("儲存失敗：" + e.message);
+      }
+    }
+
+    async function deleteEventById(eventId) {
+      if (!confirm("確定要刪除此筆行事曆事件嗎？")) return;
+      try {
+        await deleteDoc(doc(db, "stock_events", eventId));
+        closeEventDetailModal();
+        await loadStockEvents();
+      } catch (e) {
+        alert("刪除失敗：" + e.message);
       }
     }
   </script>

@@ -2,22 +2,36 @@ name: Premarket Stock Agent
 
 on:
   schedule:
-    # 週一至週五 08:15 (台灣時間 UTC+8) -> 執行台股
+    # 週一至週五 08:15 (台灣時間 UTC+8) -> 台股盤前
     - cron: '15 0 * * 1-5'
-    # 週一至週五 20:45 (台灣時間 UTC+8) -> 執行美股
+    # 週一至週五 16:30 (台灣時間 UTC+8) -> 台股盤後 + 重大事件行事曆同步
+    - cron: '30 8 * * 1-5'
+    # 週一至週五 20:45 (台灣時間 UTC+8) -> 美股盤前
     - cron: '45 12 * * 1-5'
+    # 週一至週五 06:30 (台灣時間 UTC+8，UTC 前一日 22:30) -> 美股盤後
+    - cron: '30 22 * * 1-5'
   workflow_dispatch:
     inputs:
+      mode:
+        description: '執行模式 (premarket=盤前, afterhours=盤後, events=行事曆事件)'
+        required: true
+        default: 'premarket'
+        type: choice
+        options:
+          - premarket
+          - afterhours
+          - events
       market:
-        description: '選擇市場 (TW 或 US)'
+        description: '選擇市場 (TW、US，或 events 模式可選 ALL)'
         required: true
         default: 'TW'
         type: choice
         options:
           - TW
           - US
+          - ALL
       force:
-        description: '是否忽略休市日強制執行'
+        description: '是否忽略休市日或快取強制執行'
         required: true
         default: true
         type: boolean
@@ -28,7 +42,7 @@ permissions:
 jobs:
   run-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Premarket Agent
+      - name: Run Stock Agent
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
@@ -51,18 +65,25 @@ jobs:
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
           INPUT_MARKET: ${{ github.event.inputs.market }}
           INPUT_FORCE: ${{ github.event.inputs.force }}
         run: |
           FORCE_FLAG=""
           if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            MODE="$INPUT_MODE"
             MARKET="$INPUT_MARKET"
             if [ "$INPUT_FORCE" == "true" ]; then
               FORCE_FLAG="--force"
             fi
+            python -u main.py --market "$MARKET" --mode "$MODE" $FORCE_FLAG
           elif [ "$EVENT_SCHEDULE" == "15 0 * * 1-5" ]; then
-            MARKET="TW"
+            python -u main.py --market TW --mode premarket
+          elif [ "$EVENT_SCHEDULE" == "30 8 * * 1-5" ]; then
+            python -u main.py --market TW --mode afterhours
+            python -u main.py --market ALL --mode events
+          elif [ "$EVENT_SCHEDULE" == "45 12 * * 1-5" ]; then
+            python -u main.py --market US --mode premarket
           else
-            MARKET="US"
+            python -u main.py --market US --mode afterhours
           fi
-          python -u main.py --market "$MARKET" $FORCE_FLAG

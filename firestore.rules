@@ -20,12 +20,32 @@ rules_version = '2';
 // Document ID: {YYYY-MM-DD}_{market} (e.g., 2026-11-19_TW)
 // Access Pattern: Written exclusively by Python backend (main.py) via Firebase Admin SDK.
 //                 Client web app (index.html) has read-only access for authorized admin.
+//
+// Collection: afterhours_reports
+// Document ID: {YYYY-MM-DD}_{market} (e.g., 2026-11-24_TW)
+// Access Pattern: Written exclusively by Python backend (main.py --mode afterhours) via Admin SDK.
+//                 Client web app (index.html) has read-only access for authorized admin.
 // Fields:
 //   - date: string (YYYY-MM-DD, Asia/Taipei)
 //   - market: string ('TW' | 'US')
-//   - macro_summary: string
-//   - stocks: list of maps (ticker, name, avg_cost, sentiment, price_status, key_events, action_advice)
+//   - market_summary: string
+//   - stocks: list of maps (closing price, candle pattern, intraday review, next_day_strategy, support/resistance)
 //   - updated_at: timestamp
+//
+// Collection: stock_events
+// Document ID: {market}_{ticker}_{event_type}_{YYYY-MM-DD}
+// Access Pattern: Populated by Python backend (main.py --mode events) via Admin SDK;
+//                 authorized admin may also read, create/update manual events, or delete events.
+// Fields (client manual writes):
+//   - market: string (required, immutable, enum: 'TW' | 'US')
+//   - ticker: string (required, immutable, 1..15 chars)
+//   - name: string (required, 1..100 chars)
+//   - event_type: string (required, immutable, enum: 'conference' | 'earnings' | 'dividend' | 'other')
+//   - event_date: string (required, YYYY-MM-DD)
+//   - title: string (required, 1..150 chars)
+//   - summary: string (optional, 0..1000 chars)
+//   - source: string (required, enum: 'manual')
+//   - updated_at: timestamp (optional)
 //
 // ===============================================================
 
@@ -123,6 +143,28 @@ service cloud.firestore {
         isValidOptionalString('focus', 0, 200);
     }
 
+    // Validate client-authored manual stock event document
+    function isValidManualStockEvent(eventId) {
+      let data = request.resource.data;
+      let allowedFields = ['market', 'ticker', 'name', 'event_type', 'event_date', 'title', 'summary', 'source', 'updated_at'];
+      let requiredFields = ['market', 'ticker', 'name', 'event_type', 'event_date', 'title', 'source'];
+
+      return hasOnlyAllowedFields(allowedFields) &&
+        hasRequiredFields(requiredFields) &&
+        data.market in ['TW', 'US'] &&
+        validStringLength('ticker', 1, 15) &&
+        data.ticker.matches('^[A-Z0-9][A-Z0-9.-]{0,14}$') &&
+        validStringLength('name', 1, 100) &&
+        data.event_type in ['conference', 'earnings', 'dividend', 'other'] &&
+        data.event_date is string &&
+        data.event_date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        eventId == data.market + '_' + data.ticker + '_' + data.event_type + '_' + data.event_date &&
+        validStringLength('title', 1, 150) &&
+        isValidOptionalString('summary', 0, 1000) &&
+        data.source == 'manual' &&
+        (!('updated_at' in data) || data.updated_at is timestamp);
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
@@ -139,10 +181,27 @@ service cloud.firestore {
     }
 
     // Daily AI premarket reports: read-only for authorized admin.
-    // All writes are performed by the backend via Firebase Admin SDK.
     match /reports/{reportId} {
       allow read: if isAdmin();
       allow create, update, delete: if false;
+    }
+
+    // Daily AI after-hours closing reports: read-only for authorized admin.
+    match /afterhours_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Stock corporate events calendar (conference, earnings, dividend):
+    // Read/delete by admin; backend writes via Admin SDK; admin may also add manual events.
+    match /stock_events/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && uidUnchanged() && isValidManualStockEvent(eventId);
+      allow update: if isAdmin() &&
+        uidNotModified() &&
+        isValidManualStockEvent(eventId) &&
+        areImmutableFieldsUnchanged(['market', 'ticker', 'event_type']);
+      allow delete: if isAdmin();
     }
 
     // Default deny for all other collections and subcollections

@@ -485,25 +485,73 @@ def send_telegram_notification(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="台美股 AI 盤前情報與投資建議 Agent")
-    parser.add_argument("--market", choices=["TW", "US"], required=True, help="目標市場 (TW 或 US)")
-    parser.add_argument("--force", action="store_true", help="忽略休市日強制執行測試")
+    parser = argparse.ArgumentParser(description="台美股 AI 盤前／盤後情報與重大事件 Agent")
+    parser.add_argument(
+        "--market",
+        choices=["TW", "US", "ALL"],
+        required=True,
+        help="目標市場 (TW、US 或 ALL，ALL 僅用於 events 模式)",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["premarket", "afterhours", "events"],
+        default="premarket",
+        help="執行模式：premarket (盤前)、afterhours (盤後)、events (重大事件行事曆)",
+    )
+    parser.add_argument("--force", action="store_true", help="忽略休市日或快取強制執行")
     args = parser.parse_args()
 
-    if not args.force and not is_market_open(args.market):
-        print(f"今日 {args.market} 休市，跳過執行。")
-        return
+    if args.mode in ("premarket", "afterhours"):
+        if args.market == "ALL":
+            raise ValueError("premarket 與 afterhours 模式請明確指定 --market TW 或 US。")
+        if not args.force and not is_market_open(args.market):
+            print(f"今日 {args.market} 休市，跳過執行。")
+            return
 
     db, client = init_services()
 
-    docs = (
-        db.collection("portfolio")
-        .where(filter=FieldFilter("market", "==", args.market))
-        .stream()
-    )
+    if args.market == "ALL":
+        docs = db.collection("portfolio").stream()
+    else:
+        docs = (
+            db.collection("portfolio")
+            .where(filter=FieldFilter("market", "==", args.market))
+            .stream()
+        )
     portfolio = [doc.to_dict() for doc in docs]
     if not portfolio:
         print(f"Firestore 中無 {args.market} 持股資料，結束執行。")
+        return
+
+    if args.mode == "afterhours":
+        from afterhours_events import run_afterhours_analysis
+
+        run_afterhours_analysis(
+            db=db,
+            client=client,
+            market=args.market,
+            portfolio=portfolio,
+            fallback_models=FALLBACK_MODELS,
+            exhausted_models=_exhausted_models,
+            generate_with_retry=_generate_with_retry,
+            parse_json_response=_parse_json_response,
+            get_us_finnhub_news=get_us_finnhub_news,
+        )
+        return
+
+    if args.mode == "events":
+        from afterhours_events import run_events_sync
+
+        run_events_sync(
+            db=db,
+            client=client,
+            portfolio=portfolio,
+            force_refresh=args.force,
+            fallback_models=FALLBACK_MODELS,
+            exhausted_models=_exhausted_models,
+            generate_with_retry=_generate_with_retry,
+            parse_json_response=_parse_json_response,
+        )
         return
 
     print("正在生成大盤總經摘要...")
@@ -535,4 +583,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-main()
