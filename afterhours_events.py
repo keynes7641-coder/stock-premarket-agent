@@ -197,7 +197,8 @@ def _calc_rsi14(closes: list[float]) -> float | None:
 def get_closing_technical_snapshot(yf_symbol: str) -> dict[str, Any]:
     """抓取收盤完整日 K 資訊、K 棒型態、均線、RSI、量比與支撐壓力。"""
     try:
-        df = yf.Ticker(yf_symbol).history(period="4mo")
+        clean_sym = re.sub(r"\.US$", "", str(yf_symbol or "").strip().upper())
+        df = yf.Ticker(clean_sym).history(period="4mo")
         if len(df) < 2:
             return {"summary": "無法取得收盤數據", "candle_pattern": "無資料"}
 
@@ -1135,20 +1136,26 @@ def run_events_sync(
         market = stock["market"]
         ticker = stock["ticker"]
         name = stock["name"]
+        norm_yf = (
+            re.sub(r"\.US$", "", str(stock.get("yf_symbol") or ticker).strip().upper())
+            if market == "US"
+            else str(stock.get("yf_symbol") or "").strip().upper()
+        )
+        stock_norm = {**stock, "yf_symbol": norm_yf}
         print(f"正在掃描重大事件行事曆：{name} ({market}:{ticker})...")
 
         financials = (
             _fetch_tw_quarterly_financials(ticker)
             if market == "TW"
-            else _fetch_us_quarterly_financials(stock["yf_symbol"])
+            else _fetch_us_quarterly_financials(norm_yf)
         )
 
         events = _collect_structured_events_for_stock(
-            stock, start_date, end_date, twse_exdiv_map, financials
+            stock_norm, start_date, end_date, twse_exdiv_map, financials
         )
         news_events, related_news = _discover_conference_and_news_events(
             client,
-            stock,
+            stock_norm,
             start_date,
             end_date,
             events,
@@ -1164,7 +1171,7 @@ def run_events_sync(
             ev_date = datetime.strptime(ev["event_date"], "%Y-%m-%d").date()
             status = "past" if ev_date <= today_date else "upcoming"
 
-            if ev["event_type"] == "earnings" and financials:
+            if ev["event_type"] in ("earnings", "conference") and financials:
                 ev.setdefault("details", {})["financials"] = financials
 
             prev_doc = existing_docs.get(doc_id)

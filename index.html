@@ -2002,7 +2002,10 @@
     async function saveStock() {
       const market = document.getElementById("p-market").value;
       const ticker = document.getElementById("p-ticker").value.trim().toUpperCase();
-      const yf_symbol = document.getElementById("p-yf").value.trim().toUpperCase();
+      let yf_symbol = document.getElementById("p-yf").value.trim().toUpperCase();
+      if (market === "US") {
+        yf_symbol = yf_symbol.replace(/\.US$/i, "");
+      }
       const name = document.getElementById("p-name").value.trim();
       const avg_cost = parseFloat(document.getElementById("p-cost").value);
       const focus = document.getElementById("p-focus").value.trim();
@@ -2490,13 +2493,23 @@
       if (showFin) {
         finSec.classList.remove("hidden");
         document.getElementById("btn-ev-fetch-live-fin").classList.toggle("hidden", ev.market !== "TW");
-        const existingFin = ev.details?.financials || [];
+        let existingFin = ev.details?.financials || [];
+        if (existingFin.length === 0) {
+          const sibling = Object.values(cachedEvents).find(
+            (other) =>
+              other.market === ev.market &&
+              other.ticker === ev.ticker &&
+              Array.isArray(other.details?.financials) &&
+              other.details.financials.length > 0
+          );
+          if (sibling) existingFin = sibling.details.financials;
+        }
         if (existingFin.length > 0) {
           renderFinancialsInModal(existingFin);
         } else if (ev.market === "TW") {
           fetchLiveTwFinancialsForModal(ev);
         } else {
-          document.getElementById("ev-modal-fin-tbody").innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">尚無此美股的結構化財報快照，請執行 events 同步更新。</td></tr>`;
+          document.getElementById("ev-modal-fin-tbody").innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400">尚無此美股的結構化財報快照，請確認持股的 Yahoo 代號未含 .US 後執行 events 同步更新。</td></tr>`;
           if (eventFinChartInstance) {
             eventFinChartInstance.destroy();
             eventFinChartInstance = null;

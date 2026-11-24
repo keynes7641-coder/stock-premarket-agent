@@ -164,7 +164,8 @@ def get_macro_summary(client: genai.Client, market: str) -> str:
 def get_price_summary(yf_symbol: str) -> str:
     """抓取標的近期收盤價、20MA 與成交量資訊。"""
     try:
-        df = yf.Ticker(yf_symbol).history(period="1mo")
+        clean_sym = re.sub(r"\.US$", "", str(yf_symbol or "").strip().upper())
+        df = yf.Ticker(clean_sym).history(period="1mo")
         if len(df) < 2:
             return "無法取得近期股價"
         latest, prev = df.iloc[-1], df.iloc[-2]
