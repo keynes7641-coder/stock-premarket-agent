@@ -569,19 +569,26 @@
     <!-- 分頁 5：持股清單管理 -->
     <div id="view-portfolio" class="hidden">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6">
-        <h2 class="text-lg font-bold text-emerald-400 mb-4">➕ 新增 / 更新持股</h2>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h2 class="text-lg font-bold text-emerald-400">➕ 新增 / 更新持股</h2>
+          <span class="text-xs text-slate-400">選擇市場並輸入代號，系統將自動辨識上市/上櫃並帶入 Yahoo 代號與名稱</span>
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <select id="p-market" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500">
             <option value="TW">台股 (TW)</option>
             <option value="US">美股 (US)</option>
           </select>
-          <input id="p-ticker" type="text" placeholder="代號 (例: 2308 或 RKLB)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
-          <input id="p-yf" type="text" placeholder="Yahoo代號 (例: 2308.TW / 3491.TWO / RKLB)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
-          <input id="p-name" type="text" placeholder="股票名稱 (例: 台達電)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <div class="flex gap-2">
+            <input id="p-ticker" type="text" placeholder="代號 (例: 2330 / 3491 / NVDA)" class="flex-1 min-w-0 bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+            <button type="button" id="btn-lookup-stock" class="shrink-0 px-3 py-2 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition">🔍 帶入</button>
+          </div>
+          <input id="p-yf" type="text" placeholder="Yahoo代號（自動帶入，如 3491.TWO / NVDA）" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
+          <input id="p-name" type="text" placeholder="股票名稱（自動帶入，可自行微調）" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
           <input id="p-cost" type="number" step="0.01" placeholder="持有均價" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
           <input id="p-focus" type="text" placeholder="關注主軸 (例: AI電源、低軌衛星)" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-500" />
         </div>
-        <div class="mt-4 flex gap-3">
+        <p id="p-lookup-status" class="text-xs text-slate-400 mt-2.5 min-h-[1.1rem]"></p>
+        <div class="mt-3 flex gap-3">
           <button type="button" id="btn-save-stock" class="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-6 py-2 rounded-lg transition">儲存持股</button>
           <button type="button" id="btn-reset-form" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium px-4 py-2 rounded-lg transition">清空表單</button>
         </div>
@@ -1999,12 +2006,172 @@
       }
     });
 
+    let stockLookupTimer = null;
+    let stockLookupSeq = 0;
+
+    function setLookupStatus(msg, tone = "slate") {
+      const el = document.getElementById("p-lookup-status");
+      if (!el) return;
+      const toneClass =
+        tone === "success"
+          ? "text-emerald-400"
+          : tone === "warn"
+            ? "text-amber-300"
+            : tone === "error"
+              ? "text-rose-400"
+              : "text-slate-400";
+      el.className = `text-xs mt-2.5 min-h-[1.1rem] ${toneClass}`;
+      el.innerText = msg;
+    }
+
+    async function autoLookupStockInfo(forceOverwriteName = true) {
+      const market = document.getElementById("p-market").value;
+      const rawTicker = document.getElementById("p-ticker").value.trim().toUpperCase();
+      if (!rawTicker) {
+        setLookupStatus("");
+        return false;
+      }
+
+      // 順手清理誤貼的 .TW / .TWO / .US 後綴回寫到代號欄位
+      const cleanTicker = rawTicker.replace(/\.(TW|TWO|US)$/i, "");
+      if (cleanTicker !== rawTicker) {
+        document.getElementById("p-ticker").value = cleanTicker;
+      }
+
+      const seq = ++stockLookupSeq;
+      setLookupStatus(`🔍 正在查詢 ${market === "TW" ? "台股上市/上櫃" : "美股"} ${cleanTicker} 的 Yahoo 代號與名稱...`, "slate");
+
+      try {
+        if (market === "TW") {
+          let yfSym = "";
+          let stockName = "";
+          let boardLabel = "";
+
+          // 1. 優先透過 FinMind TaiwanStockInfo 精準辨識上市 (twse -> .TW) 與上櫃 (tpex -> .TWO)
+          try {
+            const fmResp = await fetch(
+              `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&data_id=${encodeURIComponent(cleanTicker)}`
+            );
+            const fmJson = await fmResp.json();
+            const rows = fmJson?.data || [];
+            if (rows.length > 0) {
+              const info = rows[rows.length - 1];
+              const isOtc = String(info.type || "").toLowerCase() === "tpex";
+              yfSym = `${cleanTicker}.${isOtc ? "TWO" : "TW"}`;
+              stockName = String(info.stock_name || "").trim();
+              boardLabel = isOtc ? "上櫃 TPEX" : "上市 TWSE";
+            }
+          } catch (_) {}
+
+          // 2. 備援：若為剛掛牌新股或 ETF 尚未收錄於 FinMind，改由鉅亨網補查名稱
+          if (!stockName) {
+            try {
+              const cnResp = await fetch(
+                `https://ws.api.cnyes.com/ws/api/v1/quote/quotes/TWS:${encodeURIComponent(cleanTicker)}:STOCK?column=F`
+              );
+              const cnJson = await cnResp.json();
+              const item = (cnJson?.data || [])[0];
+              if (item && item["200009"]) {
+                stockName = String(item["200009"]).trim();
+                yfSym = yfSym || `${cleanTicker}.TW`;
+                boardLabel = boardLabel || "台股預設 .TW（若為上櫃請改 .TWO）";
+              }
+            } catch (_) {}
+          }
+
+          if (seq !== stockLookupSeq) return false;
+
+          if (yfSym) {
+            document.getElementById("p-yf").value = yfSym;
+            if (stockName && (forceOverwriteName || !document.getElementById("p-name").value.trim())) {
+              document.getElementById("p-name").value = stockName;
+            }
+            setLookupStatus(`✅ 已自動帶入：${boardLabel} → ${yfSym}${stockName ? " ｜ " + stockName : ""}`, "success");
+            return true;
+          }
+
+          setLookupStatus(`⚠️ 查無台股代號 ${cleanTicker}，請確認代號是否正確或手動填寫。`, "warn");
+          return false;
+        } else {
+          // 美股：Yahoo Finance 代號不加 .US，且像 BRK.B 需轉為 BRK-B
+          const yfSym = cleanTicker.replace(/\./g, "-");
+          let stockName = "";
+          let engName = "";
+
+          try {
+            const cnResp = await fetch(
+              `https://ws.api.cnyes.com/ws/api/v1/quote/quotes/USS:${encodeURIComponent(cleanTicker)}:STOCK?column=F`
+            );
+            const cnJson = await cnResp.json();
+            const item = (cnJson?.data || [])[0];
+            if (item && (item["200009"] || item["200024"])) {
+              stockName = String(item["200009"] || item["200024"]).trim();
+              engName = String(item["200024"] || "").trim();
+            }
+          } catch (_) {}
+
+          if (seq !== stockLookupSeq) return false;
+
+          document.getElementById("p-yf").value = yfSym;
+          if (stockName) {
+            if (forceOverwriteName || !document.getElementById("p-name").value.trim()) {
+              document.getElementById("p-name").value = stockName;
+            }
+            const extra = engName && engName !== stockName ? ` (${engName})` : "";
+            setLookupStatus(`✅ 已自動帶入美股：${yfSym} ｜ ${stockName}${extra}`, "success");
+            return true;
+          }
+
+          setLookupStatus(`⚠️ 已帶入 Yahoo 代號 ${yfSym}，但查無公司名稱，請確認美股代號或手動輸入名稱。`, "warn");
+          return false;
+        }
+      } catch (e) {
+        if (seq === stockLookupSeq) {
+          setLookupStatus(`⚠️ 自動查詢失敗（${e.message}），可手動填寫。`, "error");
+        }
+        return false;
+      }
+    }
+
+    document.getElementById("btn-lookup-stock").addEventListener("click", () => autoLookupStockInfo(true));
+    document.getElementById("p-market").addEventListener("change", () => {
+      if (document.getElementById("p-ticker").value.trim()) {
+        autoLookupStockInfo(true);
+      }
+    });
+    document.getElementById("p-ticker").addEventListener("input", () => {
+      if (stockLookupTimer) clearTimeout(stockLookupTimer);
+      const val = document.getElementById("p-ticker").value.trim();
+      if (!val) {
+        setLookupStatus("");
+        return;
+      }
+      stockLookupTimer = setTimeout(() => autoLookupStockInfo(true), 550);
+    });
+    document.getElementById("p-ticker").addEventListener("blur", () => {
+      if (stockLookupTimer) {
+        clearTimeout(stockLookupTimer);
+        stockLookupTimer = null;
+      }
+      const val = document.getElementById("p-ticker").value.trim();
+      if (val && (!document.getElementById("p-yf").value.trim() || !document.getElementById("p-name").value.trim())) {
+        autoLookupStockInfo(false);
+      }
+    });
+
     async function saveStock() {
       const market = document.getElementById("p-market").value;
-      const ticker = document.getElementById("p-ticker").value.trim().toUpperCase();
+      const ticker = document.getElementById("p-ticker").value.trim().toUpperCase().replace(/\.(TW|TWO|US)$/i, "");
+      document.getElementById("p-ticker").value = ticker;
+
+      // 若使用者直接輸入代號與均價就按儲存，先自動查詢補齊 Yahoo 代號與名稱
+      if (ticker && (!document.getElementById("p-yf").value.trim() || !document.getElementById("p-name").value.trim())) {
+        await autoLookupStockInfo(false);
+      }
+
       let yf_symbol = document.getElementById("p-yf").value.trim().toUpperCase();
       if (market === "US") {
-        yf_symbol = yf_symbol.replace(/\.US$/i, "");
+        yf_symbol = yf_symbol.replace(/\.US$/i, "").replace(/\./g, "-");
       }
       const name = document.getElementById("p-name").value.trim();
       const avg_cost = parseFloat(document.getElementById("p-cost").value);
@@ -2038,6 +2205,7 @@
       document.getElementById("p-name").value = s.name || "";
       document.getElementById("p-cost").value = s.avg_cost ?? "";
       document.getElementById("p-focus").value = s.focus || "";
+      setLookupStatus(`正在編輯 ${s.name} (${s.market}:${s.ticker})`, "slate");
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
@@ -2048,6 +2216,7 @@
       document.getElementById("p-name").value = "";
       document.getElementById("p-cost").value = "";
       document.getElementById("p-focus").value = "";
+      setLookupStatus("");
     }
 
     async function deleteStock(docId) {
