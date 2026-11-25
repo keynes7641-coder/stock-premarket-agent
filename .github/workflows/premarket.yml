@@ -1,12 +1,11 @@
 name: Premarket Stock Agent
 
-# 排程已改由外部 cron-job.org 透過 workflow_dispatch API 精準觸發，
-# 已停用 GitHub Actions 內建 schedule 以避免高負載延遲與重複扣款。
+# Schedule is triggered via external cron-job.org calling workflow_dispatch API.
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: '執行模式 (premarket=盤前, afterhours=盤後, events=行事曆事件, afterhours_and_events=盤後+事件)'
+        description: 'Mode (premarket, afterhours, events, afterhours_and_events)'
         required: true
         default: 'premarket'
         type: choice
@@ -16,7 +15,7 @@ on:
           - events
           - afterhours_and_events
       market:
-        description: '選擇市場 (TW、US，或 events 模式可選 ALL)'
+        description: 'Market (TW, US, or ALL for events)'
         required: true
         default: 'TW'
         type: choice
@@ -25,7 +24,7 @@ on:
           - US
           - ALL
       force:
-        description: '是否忽略休市日或快取強制執行'
+        description: 'Force run even on market holidays or cached events'
         required: false
         default: false
         type: boolean
@@ -71,18 +70,4 @@ jobs:
             python -u main.py --market ALL --mode events $FORCE_FLAG
           else
             python -u main.py --market "$INPUT_MARKET" --mode "$INPUT_MODE" $FORCE_FLAG
-          fi
-    if [ "$INPUT_FORCE" == "true" ]; then
-              FORCE_FLAG="--force"
-            fi
-            python -u main.py --market "$MARKET" --mode "$MODE" $FORCE_FLAG
-          elif [ "$EVENT_SCHEDULE" == "15 0 * * 1-5" ]; then
-            python -u main.py --market TW --mode premarket
-          elif [ "$EVENT_SCHEDULE" == "30 8 * * 1-5" ]; then
-            python -u main.py --market TW --mode afterhours
-            python -u main.py --market ALL --mode events
-          elif [ "$EVENT_SCHEDULE" == "45 12 * * 1-5" ]; then
-            python -u main.py --market US --mode premarket
-          else
-            python -u main.py --market US --mode afterhours
           fi
