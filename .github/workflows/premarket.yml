@@ -1,19 +1,12 @@
 name: Premarket Stock Agent
 
+# 排程已改由外部 cron-job.org 透過 workflow_dispatch API 精準觸發，
+# 已停用 GitHub Actions 內建 schedule 以避免高負載延遲與重複扣款。
 on:
-  schedule:
-    # 週一至週五 08:15 (台灣時間 UTC+8) -> 台股盤前
-    - cron: '15 0 * * 1-5'
-    # 週一至週五 16:30 (台灣時間 UTC+8) -> 台股盤後 + 重大事件行事曆同步
-    - cron: '30 8 * * 1-5'
-    # 週一至週五 20:45 (台灣時間 UTC+8) -> 美股盤前
-    - cron: '45 12 * * 1-5'
-    # 週一至週五 06:30 (台灣時間 UTC+8，UTC 前一日 22:30) -> 美股盤後
-    - cron: '30 22 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
-        description: '執行模式 (premarket=盤前, afterhours=盤後, events=行事曆事件)'
+        description: '執行模式 (premarket=盤前, afterhours=盤後, events=行事曆事件, afterhours_and_events=盤後+事件)'
         required: true
         default: 'premarket'
         type: choice
@@ -21,6 +14,7 @@ on:
           - premarket
           - afterhours
           - events
+          - afterhours_and_events
       market:
         description: '選擇市場 (TW、US，或 events 模式可選 ALL)'
         required: true
@@ -32,8 +26,8 @@ on:
           - ALL
       force:
         description: '是否忽略休市日或快取強制執行'
-        required: true
-        default: true
+        required: false
+        default: false
         type: boolean
 
 permissions:
@@ -63,17 +57,22 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
           INPUT_MODE: ${{ github.event.inputs.mode }}
           INPUT_MARKET: ${{ github.event.inputs.market }}
           INPUT_FORCE: ${{ github.event.inputs.force }}
         run: |
           FORCE_FLAG=""
-          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
-            MODE="$INPUT_MODE"
-            MARKET="$INPUT_MARKET"
-            if [ "$INPUT_FORCE" == "true" ]; then
+          if [ "$INPUT_FORCE" == "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+
+          if [ "$INPUT_MODE" == "afterhours_and_events" ]; then
+            python -u main.py --market "$INPUT_MARKET" --mode afterhours $FORCE_FLAG
+            python -u main.py --market ALL --mode events $FORCE_FLAG
+          else
+            python -u main.py --market "$INPUT_MARKET" --mode "$INPUT_MODE" $FORCE_FLAG
+          fi
+    if [ "$INPUT_FORCE" == "true" ]; then
               FORCE_FLAG="--force"
             fi
             python -u main.py --market "$MARKET" --mode "$MODE" $FORCE_FLAG
